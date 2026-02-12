@@ -569,3 +569,110 @@ export class GitHubAPIClient {
     return response.data;
   }
 }
+public transformContributionData(contributionCalendar: ContributionCalendar): ContributionDay[] {
+  const contributionDays: ContributionDay[] = [];
+
+  contributionCalendar.weeks.forEach(week => {
+    week.contributionDays.forEach(day => {
+      contributionDays.push({
+        date: day.date,
+        contributionCount: day.contributionCount
+      });
+    });
+  });
+
+  return contributionDays.sort((a, b) => a.date.localeCompare(b.date));
+}
+public async getContributionsForStreak(username: string, days: number = 365): Promise<ContributionDay[]> {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(to.getDate() - days);
+
+  const response = await this.getContributions(username, from, to);
+
+  if (!response.user?.contributionsCollection?.contributionCalendar) {
+    throw new Error('No contribution data found for user');
+  }
+
+  return this.transformContributionData(response.user.contributionsCollection.contributionCalendar);
+}
+public async getBatchRepositoryData(repositories: Array<{ owner: string; name: string }>): Promise<Record<string, RepositoryDetails>> {
+  if (repositories.length === 0) {
+    return {};
+  }
+
+  const maxBatchSize = 10;
+  const results: Record<string, RepositoryDetails> = {};
+
+  for (let i = 0; i < repositories.length; i += maxBatchSize) {
+    const batch = repositories.slice(i, i + maxBatchSize);
+
+    const queries = batch.map((repo, index) => {
+      const key = `repo${i + index}`;
+      return `
+        ${key}: repository(owner: "${repo.owner}", name: "${repo.name}") {
+          id
+          databaseId
+          name
+          nameWithOwner
+          description
+          url
+          homepageUrl
+          isPrivate
+          isFork
+          isArchived
+          createdAt
+          updatedAt
+          pushedAt
+          stargazerCount
+          forkCount
+          watchers {
+            totalCount
+          }
+          issues(states: OPEN) {
+            totalCount
+          }
+          pullRequests(states: OPEN) {
+            totalCount
+          }
+          releases {
+            totalCount
+          }
+          primaryLanguage {
+            name
+            color
+          }
+          licenseInfo {
+            name
+            spdxId
+          }
+          defaultBranchRef {
+            name
+          }
+        }
+      `;
+    });
+
+    const query = `
+      query {
+        ${queries.join('\n')}
+      }
+    `;
+
+    const response = await this.graphql(query);
+
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    batch.forEach((repo, index) => {
+      const key = `repo${i + index}`;
+      const repoKey = `${repo.owner}/${repo.name}`;
+      if (response.data[key]) {
+        results[repoKey] = response.data[key];
+      }
+    });
+  }
+
+  return results;
+}
