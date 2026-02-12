@@ -1,4 +1,5 @@
 import { getValidAccessToken } from './token-manager';
+import { CacheService } from './cache-service';
 
 export interface ContributionDay {
   date: string;
@@ -98,6 +99,15 @@ export interface QueuedRequest {
   retryCount: number;
 }
 
+export interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+  backoffMultiplier: number;
+  retryableStatusCodes: number[];
+  retryableErrors: string[];
+}
+
 export class GitHubAPIClient {
   private baseUrl = 'https://api.github.com';
   private graphqlUrl = 'https://api.github.com/graphql';
@@ -108,6 +118,61 @@ export class GitHubAPIClient {
   private baseDelay = 1000;
   private maxQueueSize = 100;
   private queueProcessingDelay = 100;
+  private cache: CacheService;
+
+  constructor() {
+    this.cache = new CacheService({
+      defaultTTL: 5 * 60 * 1000,
+      maxSize: 500,
+      cleanupInterval: 2 * 60 * 1000
+    });
+  }
+
+  private generateCacheKey(method: string, endpoint: string, params?: Record<string, any>): string {
+    const paramString = params ? JSON.stringify(params) : '';
+    return `${method}:${endpoint}:${paramString}`;
+  }
+
+  private getCachedData<T>(key: string): T | null {
+    return this.cache.get<T>(key);
+  }
+
+  private setCachedData<T>(key: string, data: T, ttl?: number): void {
+    this.cache.set(key, data, ttl);
+  }
+
+  private shouldCache(endpoint: string): boolean {
+    const cacheableEndpoints = [
+      '/user',
+      '/users/',
+      '/repos/',
+      'contributionsCollection',
+      'repository(',
+      'user('
+    ];
+    
+    return cacheableEndpoints.some(pattern => endpoint.includes(pattern));
+  }
+
+  private getCacheTTL(endpoint: string): number {
+    if (endpoint.includes('contributionsCollection')) {
+      return 10 * 60 * 1000;
+    }
+    
+    if (endpoint.includes('/repos/') && endpoint.includes('/actions/runs')) {
+      return 2 * 60 * 1000;
+    }
+    
+    if (endpoint.includes('repository(') || endpoint.includes('/repos/')) {
+      return 15 * 60 * 1000;
+    }
+    
+    if (endpoint.includes('user(') || endpoint.includes('/users/')) {
+      return 30 * 60 * 1000;
+    }
+    
+    return 5 * 60 * 1000;
+  }
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
     const tokenInfo = await getValidAccessToken();
@@ -288,7 +353,23 @@ export class GitHubAPIClient {
 
   public async get(endpoint: string): Promise<any> {
     const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
-    return this.queueRequest(url, { method: 'GET' });
+    const cacheKey = this.generateCacheKey('GET', endpoint);
+    
+    if (this.shouldCache(endpoint)) {
+      const cachedData = this.getCachedData(cacheKey);
+      if (cachedData !== null) {
+        return cachedData;
+      }
+    }
+    
+    const data = await this.queueRequest(url, { method: 'GET' });
+    
+    if (this.shouldCache(endpoint)) {
+      const ttl = this.getCacheTTL(endpoint);
+      this.setCachedData(cacheKey, data, ttl);
+    }
+    
+    return data;
   }
 
   public async post(endpoint: string, data?: any): Promise<any> {
@@ -303,7 +384,16 @@ export class GitHubAPIClient {
   }
 
   public async graphql(query: string, variables?: Record<string, any>): Promise<any> {
-    return this.queueRequest(this.graphqlUrl, {
+    const cacheKey = this.generateCacheKey('GRAPHQL', query, variables);
+    
+    if (this.shouldCache(query)) {
+      const cachedData = this.getCachedData(cacheKey);
+      if (cachedData !== null) {
+        return cachedData;
+      }
+    }
+    
+    const data = await this.queueRequest(this.graphqlUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -313,6 +403,13 @@ export class GitHubAPIClient {
         variables
       })
     });
+    
+    if (this.shouldCache(query)) {
+      const ttl = this.getCacheTTL(query);
+      this.setCachedData(cacheKey, data, ttl);
+    }
+    
+    return data;
   }
 
   public async getRepositories(username: string): Promise<any[]> {
@@ -698,8 +795,19 @@ export class GitHubAPIClient {
       throw new Error('Query complexity too high. Consider breaking into smaller queries.');
     }
     
+    const cacheKey = this.generateCacheKey('OPTIMIZED_GRAPHQL', query, variables);
+    
+    if (this.shouldCache(query)) {
+      const cachedData = this.getCachedData(cacheKey);
+      if (cachedData !== null) {
+        return cachedData;
+      }
+    }
+    
+    let data;
+    
     if (this.shouldQueueRequest() || complexity > 500) {
-      return this.queueRequest(this.graphqlUrl, {
+      data = await this.queueRequest(this.graphqlUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -709,9 +817,16 @@ export class GitHubAPIClient {
           variables
         })
       });
+    } else {
+      data = await this.graphql(query, variables);
     }
     
-    return this.graphql(query, variables);
+    if (this.shouldCache(query)) {
+      const ttl = this.getCacheTTL(query);
+      this.setCachedData(cacheKey, data, ttl);
+    }
+    
+    return data;
   }
 
   public buildOptimizedContributionQuery(username: string, from: Date, to: Date, fields?: string[]): string {
@@ -759,5 +874,47 @@ export class GitHubAPIClient {
         }
       }
     `;
+  }
+
+  public invalidateCache(pattern?: string): number {
+    if (pattern) {
+      return this.cache.invalidatePattern(pattern);
+    }
+    
+    this.cache.clear();
+    return 0;
+  }
+
+  public invalidateUserCache(username: string): number {
+    return this.cache.invalidatePattern(`.*users/${username}.*|.*user\\(.*${username}.*`);
+  }
+
+  public invalidateRepositoryCache(owner: string, repo?: string): number {
+    if (repo) {
+      return this.cache.invalidatePattern(`.*repos/${owner}/${repo}.*|.*repository\\(.*${owner}.*${repo}.*`);
+    }
+    
+    return this.cache.invalidatePattern(`.*repos/${owner}/.*|.*repository\\(.*${owner}.*`);
+  }
+
+  public invalidateContributionsCache(username: string): number {
+    return this.cache.invalidatePattern(`.*contributionsCollection.*${username}.*`);
+  }
+
+  public getCacheStats(): {
+    size: number;
+    maxSize: number;
+    hitRate: number;
+    memoryUsage: number;
+  } {
+    return this.cache.getStats();
+  }
+
+  public clearCache(): void {
+    this.cache.clear();
+  }
+
+  public destroy(): void {
+    this.cache.destroy();
   }
 }
