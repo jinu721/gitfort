@@ -4,6 +4,9 @@ export type { StreakStats, StreakRiskConfig } from '../streak-calculator'
 export { StreakService } from '../streak-service'
 export type { StreakUpdateResult, StreakServiceConfig } from '../streak-service'
 
+export { StreakPersistenceService } from '../streak-persistence-service'
+export type { StreakPersistenceResult, StreakQueryOptions } from '../streak-persistence-service'
+
 export { StreakRiskDetector } from '../streak-risk-detector'
 export type { 
   RiskLevel, 
