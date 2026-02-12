@@ -2,8 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, NEXTAUTH_SECRET } from "./env";
 import { encryptToken, decryptToken } from "./encryption";
-import { connectToDatabase } from "./database";
-import { User } from "./models/user";
+import { createOrUpdateUser } from "./session-manager";
 
 async function refreshAccessToken(token: any) {
   try {
@@ -61,21 +60,19 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, account, user, profile }) {
       if (account && user && profile) {
-        await connectToDatabase();
-        
         const userData = {
           githubId: parseInt(user.id),
-          username: profile.login,
-          email: user.email || profile.email,
-          avatarUrl: user.image || profile.avatar_url,
-          accessToken: encryptToken(account.access_token!),
+          username: profile.login || user.name || '',
+          email: user.email || profile.email || '',
+          avatarUrl: user.image || profile.avatar_url || '',
+          accessToken: account.access_token!,
         };
 
-        await User.findOneAndUpdate(
-          { githubId: userData.githubId },
-          userData,
-          { upsert: true, new: true }
-        );
+        try {
+          await createOrUpdateUser(userData);
+        } catch (error) {
+          console.error("Failed to persist user data:", error);
+        }
 
         return {
           ...token,
@@ -83,9 +80,9 @@ export const authOptions: NextAuthOptions = {
           refreshToken: account.refresh_token,
           accessTokenExpires: account.expires_at ? account.expires_at * 1000 : Date.now() + 60 * 60 * 1000,
           githubId: user.id,
-          username: profile.login,
-          email: user.email || profile.email,
-          avatarUrl: user.image || profile.avatar_url,
+          username: userData.username,
+          email: userData.email,
+          avatarUrl: userData.avatarUrl,
         };
       }
 
@@ -113,22 +110,15 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       if (account?.provider === "github") {
         try {
-          await connectToDatabase();
-          
           const userData = {
             githubId: parseInt(user.id),
-            username: profile?.login,
-            email: user.email || profile?.email,
-            avatarUrl: user.image || profile?.avatar_url,
-            accessToken: encryptToken(account.access_token!),
+            username: profile?.login || user.name || '',
+            email: user.email || profile?.email || '',
+            avatarUrl: user.image || profile?.avatar_url || '',
+            accessToken: account.access_token!,
           };
 
-          await User.findOneAndUpdate(
-            { githubId: userData.githubId },
-            userData,
-            { upsert: true, new: true }
-          );
-
+          await createOrUpdateUser(userData);
           return true;
         } catch (error) {
           console.error("Error saving user to database:", error);
