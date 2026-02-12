@@ -232,3 +232,23 @@ export class GitHubAPIClient {
     });
   }
 }
+
+public async getRepositories(username: string): Promise<any[]> {
+  const response = await this.get(`/users/${username}/repos?per_page=100&sort=updated`);
+  return response;
+}
+
+public async getWorkflowRuns(owner: string, repo: string): Promise<any[]> {
+  const response = await this.get(`/repos/${owner}/${repo}/actions/runs?per_page=100`);
+  return response.workflow_runs || [];
+}
+
+public async getRepositoryContent(owner: string, repo: string, path: string): Promise<string> {
+  const response = await this.get(`/repos/${owner}/${repo}/contents/${path}`);
+
+  if (response.type === 'file' && response.content) {
+    return Buffer.from(response.content, 'base64').toString('utf-8');
+  }
+
+  throw new Error('Content not found or not a file');
+}
