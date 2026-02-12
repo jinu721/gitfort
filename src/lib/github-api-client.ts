@@ -1,0 +1,193 @@
+import { getValidAccessToken } from './token-manager';
+
+export interface RateLimitStatus {
+  limit: number;
+  remaining: number;
+  reset: number;
+  used: number;
+}
+
+export interface QueuedRequest {
+  url: string;
+  options: RequestInit;
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+  retryCount: number;
+}
+
+export class GitHubAPIClient {
+  private baseUrl = 'https://api.github.com';
+  private graphqlUrl = 'https://api.github.com/graphql';
+  private requestQueue: QueuedRequest[] = [];
+  private isProcessingQueue = false;
+  private rateLimitStatus: RateLimitStatus | null = null;
+  private maxRetries = 3;
+  private baseDelay = 1000;
+
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const tokenInfo = await getValidAccessToken();
+    
+    if (!tokenInfo || !tokenInfo.isValid) {
+      throw new Error(tokenInfo?.error || 'No valid access token available');
+    }
+
+    return {
+      'Authorization': `Bearer ${tokenInfo.accessToken}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'GitHub-Control-Center/1.0'
+    };
+  }
+
+  private updateRateLimitStatus(headers: Headers): void {
+    const limit = headers.get('x-ratelimit-limit');
+    const remaining = headers.get('x-ratelimit-remaining');
+    const reset = headers.get('x-ratelimit-reset');
+    const used = headers.get('x-ratelimit-used');
+
+    if (limit && remaining && reset && used) {
+      this.rateLimitStatus = {
+        limit: parseInt(limit),
+        remaining: parseInt(remaining),
+        reset: parseInt(reset),
+        used: parseInt(used)
+      };
+    }
+  }
+
+  private async waitForRateLimit(): Promise<void> {
+    if (!this.rateLimitStatus) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const resetTime = this.rateLimitStatus.reset;
+    
+    if (this.rateLimitStatus.remaining <= 0 && now < resetTime) {
+      const waitTime = (resetTime - now + 1) * 1000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+
+  private async executeRequest(url: string, options: RequestInit): Promise<Response> {
+    const headers = await this.getAuthHeaders();
+    
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...options.headers
+      }
+    });
+
+    this.updateRateLimitStatus(response.headers);
+
+    if (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0') {
+      throw new Error('RATE_LIMIT_EXCEEDED');
+    }
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response;
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    while (this.requestQueue.length > 0) {
+      const request = this.requestQueue.shift()!;
+      
+      try {
+        await this.waitForRateLimit();
+        
+        const response = await this.executeRequest(request.url, request.options);
+        const data = await response.json();
+        
+        request.resolve(data);
+      } catch (error: any) {
+        if (error.message === 'RATE_LIMIT_EXCEEDED' && request.retryCount < this.maxRetries) {
+          request.retryCount++;
+          this.requestQueue.unshift(request);
+          await this.waitForRateLimit();
+          continue;
+        }
+
+        if (request.retryCount < this.maxRetries && error.message.includes('GitHub API error')) {
+          request.retryCount++;
+          const delay = this.baseDelay * Math.pow(2, request.retryCount - 1);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          this.requestQueue.unshift(request);
+          continue;
+        }
+
+        request.reject(error);
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  private async queueRequest(url: string, options: RequestInit = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const queuedRequest: QueuedRequest = {
+        url,
+        options,
+        resolve,
+        reject,
+        retryCount: 0
+      };
+
+      this.requestQueue.push(queuedRequest);
+      this.processQueue();
+    });
+  }
+
+  public async checkRateLimit(): Promise<RateLimitStatus> {
+    try {
+      const response = await this.executeRequest(`${this.baseUrl}/rate_limit`, {
+        method: 'GET'
+      });
+      
+      const data = await response.json();
+      return data.rate;
+    } catch (error) {
+      throw new Error(`Failed to check rate limit: ${error}`);
+    }
+  }
+
+  public getRateLimitStatus(): RateLimitStatus | null {
+    return this.rateLimitStatus;
+  }
+
+  public async get(endpoint: string): Promise<any> {
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+    return this.queueRequest(url, { method: 'GET' });
+  }
+
+  public async post(endpoint: string, data?: any): Promise<any> {
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+    return this.queueRequest(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: data ? JSON.stringify(data) : undefined
+    });
+  }
+
+  public async graphql(query: string, variables?: Record<string, any>): Promise<any> {
+    return this.queueRequest(this.graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query,
+        variables
+      })
+    });
+  }
+}
