@@ -1,5 +1,88 @@
 import { getValidAccessToken } from './token-manager';
 
+export interface ContributionDay {
+  date: string;
+  contributionCount: number;
+}
+
+export interface ContributionWeek {
+  contributionDays: ContributionDay[];
+}
+
+export interface ContributionCalendar {
+  totalContributions: number;
+  weeks: ContributionWeek[];
+}
+
+export interface ContributionsCollection {
+  contributionCalendar: ContributionCalendar;
+  totalCommitContributions?: number;
+  totalIssueContributions?: number;
+  totalPullRequestContributions?: number;
+  totalPullRequestReviewContributions?: number;
+  contributionYears?: number[];
+}
+
+export interface UserProfile {
+  id: string;
+  databaseId: number;
+  login: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+  bio: string;
+  company: string;
+  location: string;
+  websiteUrl: string;
+  twitterUsername: string;
+  createdAt: string;
+  updatedAt: string;
+  followers: { totalCount: number };
+  following: { totalCount: number };
+  repositories: { totalCount: number };
+  contributionsCollection: ContributionsCollection;
+}
+
+export interface RepositoryLanguage {
+  name: string;
+  color: string;
+}
+
+export interface RepositoryLanguageEdge {
+  size: number;
+  node: RepositoryLanguage;
+}
+
+export interface RepositoryLanguages {
+  edges: RepositoryLanguageEdge[];
+  totalSize: number;
+}
+
+export interface RepositoryDetails {
+  id: string;
+  databaseId: number;
+  name: string;
+  nameWithOwner: string;
+  description: string;
+  url: string;
+  homepageUrl: string;
+  isPrivate: boolean;
+  isFork: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  pushedAt: string;
+  stargazerCount: number;
+  forkCount: number;
+  watchers: { totalCount: number };
+  issues: { totalCount: number };
+  pullRequests: { totalCount: number };
+  releases: { totalCount: number };
+  primaryLanguage: RepositoryLanguage;
+  licenseInfo: { name: string; spdxId: string };
+  defaultBranchRef: { name: string };
+}
+
 export interface RateLimitStatus {
   limit: number;
   remaining: number;
@@ -250,5 +333,239 @@ export class GitHubAPIClient {
     }
 
     throw new Error('Content not found or not a file');
+    throw new Error('Content not found or not a file');
+  }
+
+  public async getContributions(username: string, from: Date, to: Date): Promise<{ user: { contributionsCollection: ContributionsCollection } }> {
+    const query = `
+      query($username: String!, $from: DateTime!, $to: DateTime!) {
+        user(login: $username) {
+          contributionsCollection(from: $from, to: $to) {
+            contributionCalendar {
+              totalContributions
+              weeks {
+                contributionDays {
+                  date
+                  contributionCount
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      username,
+      from: from.toISOString(),
+      to: to.toISOString()
+    };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
+  }
+
+  public async getUserProfile(username: string): Promise<{ user: UserProfile }> {
+    const query = `
+      query($username: String!) {
+        user(login: $username) {
+          id
+          databaseId
+          login
+          name
+          email
+          avatarUrl
+          bio
+          company
+          location
+          websiteUrl
+          twitterUsername
+          createdAt
+          updatedAt
+          followers {
+            totalCount
+          }
+          following {
+            totalCount
+          }
+          repositories(privacy: PUBLIC) {
+            totalCount
+          }
+          contributionsCollection {
+            totalCommitContributions
+            totalIssueContributions
+            totalPullRequestContributions
+            totalPullRequestReviewContributions
+          }
+        }
+      }
+    `;
+
+    const variables = { username };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
+  }
+
+  public async getContributionYears(username: string): Promise<{ user: { contributionsCollection: { contributionYears: number[] } } }> {
+    const query = `
+      query($username: String!) {
+        user(login: $username) {
+          contributionsCollection {
+            contributionYears
+          }
+        }
+      }
+    `;
+
+    const variables = { username };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
+  }
+
+  public async getRepositoryLanguages(owner: string, repo: string): Promise<{ repository: { languages: RepositoryLanguages } }> {
+    const query = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+            edges {
+              size
+              node {
+                name
+                color
+              }
+            }
+            totalSize
+          }
+        }
+      }
+    `;
+
+    const variables = { owner, repo };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
+  }
+
+  public async getRepositoryDetails(owner: string, repo: string): Promise<{ repository: RepositoryDetails }> {
+    const query = `
+      query($owner: String!, $repo: String!) {
+        repository(owner: $owner, name: $repo) {
+          id
+          databaseId
+          name
+          nameWithOwner
+          description
+          url
+          homepageUrl
+          isPrivate
+          isFork
+          isArchived
+          createdAt
+          updatedAt
+          pushedAt
+          stargazerCount
+          forkCount
+          watchers {
+            totalCount
+          }
+          issues(states: OPEN) {
+            totalCount
+          }
+          pullRequests(states: OPEN) {
+            totalCount
+          }
+          releases {
+            totalCount
+          }
+          primaryLanguage {
+            name
+            color
+          }
+          licenseInfo {
+            name
+            spdxId
+          }
+          defaultBranchRef {
+            name
+          }
+        }
+      }
+    `;
+
+    const variables = { owner, repo };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
+  }
+
+  public async getOptimizedContributions(username: string, years: number[] = []): Promise<Record<string, { contributionsCollection: ContributionsCollection }>> {
+    if (years.length === 0) {
+      const currentYear = new Date().getFullYear();
+      years = [currentYear];
+    }
+
+    const queries = years.map((year) => {
+      const from = new Date(`${year}-01-01T00:00:00Z`);
+      const to = new Date(`${year}-12-31T23:59:59Z`);
+      
+      return `
+        year${year}: user(login: $username) {
+          contributionsCollection(from: "${from.toISOString()}", to: "${to.toISOString()}") {
+            contributionCalendar {
+              totalContributions
+              weeks {
+                contributionDays {
+                  date
+                  contributionCount
+                }
+              }
+            }
+          }
+        }
+      `;
+    });
+
+    const query = `
+      query($username: String!) {
+        ${queries.join('\n')}
+      }
+    `;
+
+    const variables = { username };
+
+    const response = await this.graphql(query, variables);
+    
+    if (response.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+    }
+
+    return response.data;
   }
 }
