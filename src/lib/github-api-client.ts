@@ -23,6 +23,8 @@ export class GitHubAPIClient {
   private rateLimitStatus: RateLimitStatus | null = null;
   private maxRetries = 3;
   private baseDelay = 1000;
+  private maxQueueSize = 100;
+  private queueProcessingDelay = 100;
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
     const tokenInfo = await getValidAccessToken();
@@ -130,6 +132,10 @@ export class GitHubAPIClient {
         const data = await response.json();
         
         request.resolve(data);
+        
+        if (this.shouldQueueRequest()) {
+          await new Promise(resolve => setTimeout(resolve, this.queueProcessingDelay));
+        }
       } catch (error: any) {
         if (error.message === 'RATE_LIMIT_EXCEEDED' && request.retryCount < this.maxRetries) {
           request.retryCount++;
@@ -154,6 +160,10 @@ export class GitHubAPIClient {
   }
 
   private async queueRequest(url: string, options: RequestInit = {}): Promise<any> {
+    if (this.requestQueue.length >= this.maxQueueSize) {
+      throw new Error('Request queue is full. Please try again later.');
+    }
+
     return new Promise((resolve, reject) => {
       const queuedRequest: QueuedRequest = {
         url,
@@ -166,6 +176,14 @@ export class GitHubAPIClient {
       this.requestQueue.push(queuedRequest);
       this.processQueue();
     });
+  }
+
+  public getQueueStatus(): { queueLength: number; isProcessing: boolean; maxQueueSize: number } {
+    return {
+      queueLength: this.requestQueue.length,
+      isProcessing: this.isProcessingQueue,
+      maxQueueSize: this.maxQueueSize
+    };
   }
 
   public async checkRateLimit(): Promise<RateLimitStatus> {
