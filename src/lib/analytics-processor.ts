@@ -30,6 +30,36 @@ export interface ActivityData {
   averageActivityScore: number
   mostActiveRepository: string
   leastActiveRepository: string
+
+    export interface HeatmapData {
+      contributions: Array<{
+        date: string
+        count: number
+        level: number
+        dayOfWeek: number
+        weekOfYear: number
+      }>
+      totalContributions: number
+      maxContributions: number
+      averageContributions: number
+      streakData: {
+        currentStreak: number
+        longestStreak: number
+        streakStart: string | null
+        streakEnd: string | null
+      }
+      dateRange: {
+        startDate: string
+        endDate: string
+        totalDays: number
+      }
+    }
+
+    export interface DateRange {
+      startDate: Date
+      endDate: Date
+    }
+
 }
 
 export interface RepositoryStats {
@@ -148,6 +178,77 @@ export class AnalyticsProcessor {
       leastActiveRepository: repositoryActivity.length > 0 ? repositoryActivity[repositoryActivity.length - 1].repository : ''
     }
   }
+  async generateContributionHeatmap(username: string, dateRange?: DateRange): Promise<HeatmapData> {
+    const endDate = dateRange?.endDate || new Date()
+    const startDate = dateRange?.startDate || new Date(endDate.getTime() - (365 * 24 * 60 * 60 * 1000))
+
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+    const contributions = await this.githubClient.getContributionsForStreak(username, daysDiff)
+
+    const filteredContributions = contributions.filter(day => {
+      const dayDate = new Date(day.date)
+      return dayDate >= startDate && dayDate <= endDate
+    })
+
+    const heatmapContributions = filteredContributions.map(day => {
+      const date = new Date(day.date)
+      const level = this.calculateContributionLevel(day.contributionCount)
+      const dayOfWeek = date.getDay()
+      const weekOfYear = this.getWeekOfYear(date)
+
+      return {
+        date: day.date,
+        count: day.contributionCount,
+        level,
+        dayOfWeek,
+        weekOfYear
+      }
+    })
+
+    const totalContributions = heatmapContributions.reduce((sum, day) => sum + day.count, 0)
+    const maxContributions = Math.max(...heatmapContributions.map(day => day.count), 0)
+    const averageContributions = heatmapContributions.length > 0 ? totalContributions / heatmapContributions.length : 0
+
+    const streakData = this.calculateStreakFromHeatmap(heatmapContributions)
+
+    return {
+      contributions: heatmapContributions,
+      totalContributions,
+      maxContributions,
+      averageContributions,
+      streakData,
+      dateRange: {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        totalDays: heatmapContributions.length
+      }
+    }
+  }
+
+  async generateCustomRangeHeatmap(username: string, startDate: string, endDate: string): Promise<HeatmapData> {
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+
+    if (start > end) {
+      throw new Error('Start date must be before end date')
+    }
+
+    return this.generateContributionHeatmap(username, { startDate: start, endDate: end })
+  }
+
+  async generateYearlyHeatmap(username: string, year: number): Promise<HeatmapData> {
+    const startDate = new Date(year, 0, 1)
+    const endDate = new Date(year, 11, 31)
+
+    return this.generateContributionHeatmap(username, { startDate, endDate })
+  }
+
+  async generateLastNDaysHeatmap(username: string, days: number): Promise<HeatmapData> {
+    const endDate = new Date()
+    const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000))
+
+    return this.generateContributionHeatmap(username, { startDate, endDate })
+  }
 
   private aggregateByWeek(contributions: Array<{ date: string; contributionCount: number }>): Array<{ week: string; count: number }> {
     const weekMap = new Map<string, number>()
@@ -239,5 +340,71 @@ export class AnalyticsProcessor {
     }
 
     return colors[language] || '#8b949e'
+  }
+  private calculateContributionLevel(count: number): number {
+    if (count === 0) return 0
+    if (count <= 3) return 1
+    if (count <= 6) return 2
+    if (count <= 9) return 3
+    return 4
+  }
+
+  private getWeekOfYear(date: Date): number {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1)
+    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7)
+  }
+
+  private calculateStreakFromHeatmap(contributions: Array<{ date: string; count: number }>): {
+    currentStreak: number
+    longestStreak: number
+    streakStart: string | null
+    streakEnd: string | null
+  } {
+    const sortedContributions = contributions
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+    let currentStreak = 0
+    let longestStreak = 0
+    let currentStreakStart: string | null = null
+    let currentStreakEnd: string | null = null
+    let longestStreakStart: string | null = null
+    let longestStreakEnd: string | null = null
+    let tempStreakStart: string | null = null
+
+    for (let i = sortedContributions.length - 1; i >= 0; i--) {
+      const contribution = sortedContributions[i]
+
+      if (contribution.count > 0) {
+        if (currentStreak === 0) {
+          currentStreakEnd = contribution.date
+          tempStreakStart = contribution.date
+        }
+        currentStreak++
+        currentStreakStart = contribution.date
+      } else {
+        if (currentStreak > longestStreak) {
+          longestStreak = currentStreak
+          longestStreakStart = currentStreakStart
+          longestStreakEnd = currentStreakEnd
+        }
+        currentStreak = 0
+        currentStreakStart = null
+        currentStreakEnd = null
+      }
+    }
+
+    if (currentStreak > longestStreak) {
+      longestStreak = currentStreak
+      longestStreakStart = currentStreakStart
+      longestStreakEnd = currentStreakEnd
+    }
+
+    return {
+      currentStreak,
+      longestStreak,
+      streakStart: longestStreakStart,
+      streakEnd: longestStreakEnd
+    }
   }
 }
