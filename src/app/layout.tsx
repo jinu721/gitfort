@@ -7,8 +7,8 @@ import { ThemeProvider } from "@/components/ui/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "GitHub Control Center",
-  description: "Personal GitHub Control Center - Advanced monitoring, analytics, and security scanning for your GitHub repositories",
+  title: "GitFort",
+  description: "GitFort - Advanced monitoring, analytics, and security scanning for your GitHub repositories",
 };
 
 export default function RootLayout({
