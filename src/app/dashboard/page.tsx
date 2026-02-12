@@ -8,6 +8,7 @@ import { StreakDashboard } from "@/components/streak-dashboard";
 import { SecurityDashboard } from "@/components/security-dashboard";
 import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 import { CICDDashboard } from "@/components/cicd-dashboard";
+import { ErrorBoundary, NetworkError } from "@/components/ui";
 
 type DashboardSection = 'overview' | 'streak' | 'security' | 'analytics' | 'cicd';
 
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
   const [repositories, setRepositories] = useState<Array<{ owner: string; name: string }>>([]);
+  const [networkError, setNetworkError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -31,13 +33,17 @@ export default function Dashboard() {
 
   const fetchRepositories = async () => {
     try {
+      setNetworkError(null);
       const response = await fetch('/api/repositories');
       if (response.ok) {
         const data = await response.json();
         setRepositories(data.repositories || []);
+      } else {
+        throw new Error('Failed to fetch repositories');
       }
     } catch (error) {
       console.error('Failed to fetch repositories:', error);
+      setNetworkError('Failed to load repositories');
     }
   };
 
@@ -234,7 +240,15 @@ export default function Dashboard() {
         </aside>
 
         <main className="flex-1 p-8">
-          {renderActiveSection()}
+          {networkError && (
+            <div className="mb-6">
+              <NetworkError onRetry={fetchRepositories} />
+            </div>
+          )}
+          
+          <ErrorBoundary>
+            {renderActiveSection()}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
