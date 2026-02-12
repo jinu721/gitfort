@@ -361,7 +361,7 @@ export class GitHubAPIClient {
       to: to.toISOString()
     };
 
-    const response = await this.graphql(query, variables);
+    const response = await this.optimizedGraphql(query, variables);
     
     if (response.errors) {
       throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
@@ -408,7 +408,7 @@ export class GitHubAPIClient {
 
     const variables = { username };
 
-    const response = await this.graphql(query, variables);
+    const response = await this.optimizedGraphql(query, variables);
     
     if (response.errors) {
       throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
@@ -560,7 +560,7 @@ export class GitHubAPIClient {
 
     const variables = { username };
 
-    const response = await this.graphql(query, variables);
+    const response = await this.optimizedGraphql(query, variables);
     
     if (response.errors) {
       throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
@@ -675,4 +675,82 @@ public async getBatchRepositoryData(repositories: Array<{ owner: string; name: s
   }
 
   return results;
+}
+private calculateQueryComplexity(query: string): number {
+  const fieldMatches = query.match(/\w+\s*{/g) || [];
+  const nestedFields = query.match(/{\s*\w+/g) || [];
+  const connectionFields = query.match(/(first|last):\s*\d+/g) || [];
+
+  let complexity = fieldMatches.length;
+  complexity += nestedFields.length * 2;
+  complexity += connectionFields.length * 5;
+
+  return complexity;
+}
+public async optimizedGraphql(query: string, variables?: Record<string, any>): Promise<any> {
+  const complexity = this.calculateQueryComplexity(query);
+
+  if (complexity > 1000) {
+    throw new Error('Query complexity too high. Consider breaking into smaller queries.');
+  }
+
+  if (this.shouldQueueRequest() || complexity > 500) {
+    return this.queueRequest(this.graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query,
+        variables
+      })
+    });
+  }
+
+  return this.graphql(query, variables);
+}
+public buildOptimizedContributionQuery(username: string, from: Date, to: Date, fields?: string[]): string {
+  const defaultFields = [
+    'totalContributions',
+    'weeks { contributionDays { date contributionCount } }'
+  ];
+
+  const selectedFields = fields || defaultFields;
+
+  return `
+    query($username: String!, $from: DateTime!, $to: DateTime!) {
+      user(login: $username) {
+        contributionsCollection(from: $from, to: $to) {
+          contributionCalendar {
+            ${selectedFields.join('\n              ')}
+          }
+        }
+      }
+    }
+  `;
+}
+public buildOptimizedUserQuery(username: string, fields?: string[]): string {
+  const defaultFields = [
+    'id',
+    'databaseId',
+    'login',
+    'name',
+    'email',
+    'avatarUrl',
+    'bio',
+    'company',
+    'location',
+    'createdAt',
+    'updatedAt'
+  ];
+
+  const selectedFields = fields || defaultFields;
+
+  return `
+    query($username: String!) {
+      user(login: $username) {
+        ${selectedFields.join('\n          ')}
+      }
+    }
+  `;
 }
