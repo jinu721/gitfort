@@ -3,16 +3,30 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
   --background-end-rgb: 255, 255, 255;
+  
+  /* Light mode colors */
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --surface: 248 250 252;
+  --border: 226 232 240;
+  --muted: 100 116 139;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --foreground-rgb: 248, 250, 252;
+    --background-start-rgb: 13, 17, 23;
+    --background-end-rgb: 22, 27, 34;
+    
+    /* Dark mode colors */
+    --background: 13 17 23;
+    --foreground: 248 250 252;
+    --surface: 22 27 34;
+    --border: 48 54 61;
+    --muted: 139 148 158;
   }
 }
 
@@ -24,4 +38,23 @@ body {
       rgb(var(--background-end-rgb))
     )
     rgb(var(--background-start-rgb));
+}
+
+/* Custom utility classes for the GitHub Control Center */
+@layer components {
+  .dashboard-card {
+    @apply bg-white dark:bg-github-surface border border-gray-200 dark:border-github-border rounded-lg shadow-sm;
+  }
+  
+  .dashboard-button {
+    @apply px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .dashboard-button-primary {
+    @apply dashboard-button bg-dashboard-primary text-white hover:bg-blue-700 focus:ring-dashboard-primary;
+  }
+  
+  .dashboard-button-secondary {
+    @apply dashboard-button bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 focus:ring-gray-500;
+  }
 }

@@ -24,12 +24,22 @@ A comprehensive dashboard application that provides developers with advanced mon
    npm install
    ```
 
-2. Run the development server:
+2. Set up environment variables:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Then edit `.env.local` with your actual values:
+   - **GitHub OAuth**: Create a GitHub OAuth App at [GitHub Developer Settings](https://github.com/settings/applications/new)
+   - **MongoDB**: Create a MongoDB Atlas cluster at [MongoDB Cloud](https://cloud.mongodb.com/)
+   - **SMTP**: Configure email service (Gmail App Password recommended)
+   - **Secrets**: Generate secure keys using `openssl rand -base64 32` and `openssl rand -hex 16`
+
+3. Run the development server:
    ```bash
    npm run dev
    ```
 
-3. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 ## Project Structure
 

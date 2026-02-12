@@ -568,189 +568,196 @@ export class GitHubAPIClient {
 
     return response.data;
   }
-}
-public transformContributionData(contributionCalendar: ContributionCalendar): ContributionDay[] {
-  const contributionDays: ContributionDay[] = [];
 
-  contributionCalendar.weeks.forEach(week => {
-    week.contributionDays.forEach(day => {
-      contributionDays.push({
-        date: day.date,
-        contributionCount: day.contributionCount
+  public transformContributionData(contributionCalendar: ContributionCalendar): ContributionDay[] {
+    const contributionDays: ContributionDay[] = [];
+    
+    contributionCalendar.weeks.forEach(week => {
+      week.contributionDays.forEach(day => {
+        contributionDays.push({
+          date: day.date,
+          contributionCount: day.contributionCount
+        });
       });
     });
-  });
-
-  return contributionDays.sort((a, b) => a.date.localeCompare(b.date));
-}
-public async getContributionsForStreak(username: string, days: number = 365): Promise<ContributionDay[]> {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(to.getDate() - days);
-
-  const response = await this.getContributions(username, from, to);
-
-  if (!response.user?.contributionsCollection?.contributionCalendar) {
-    throw new Error('No contribution data found for user');
+    
+    return contributionDays.sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  return this.transformContributionData(response.user.contributionsCollection.contributionCalendar);
-}
-public async getBatchRepositoryData(repositories: Array<{ owner: string; name: string }>): Promise<Record<string, RepositoryDetails>> {
-  if (repositories.length === 0) {
-    return {};
+  public async getContributionsForStreak(username: string, days: number = 365): Promise<ContributionDay[]> {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(to.getDate() - days);
+    
+    const response = await this.getContributions(username, from, to);
+    
+    if (!response.user?.contributionsCollection?.contributionCalendar) {
+      throw new Error('No contribution data found for user');
+    }
+    
+    return this.transformContributionData(response.user.contributionsCollection.contributionCalendar);
   }
 
-  const maxBatchSize = 10;
-  const results: Record<string, RepositoryDetails> = {};
+  public async getBatchRepositoryData(repositories: Array<{ owner: string; name: string }>): Promise<Record<string, RepositoryDetails>> {
+    if (repositories.length === 0) {
+      return {};
+    }
+    
+    const maxBatchSize = 10;
+    const results: Record<string, RepositoryDetails> = {};
+    
+    for (let i = 0; i < repositories.length; i += maxBatchSize) {
+      const batch = repositories.slice(i, i + maxBatchSize);
+      
+      const queries = batch.map((repo, index) => {
+        const key = `repo${i + index}`;
+        return `
+          ${key}: repository(owner: "${repo.owner}", name: "${repo.name}") {
+            id
+            databaseId
+            name
+            nameWithOwner
+            description
+            url
+            homepageUrl
+            isPrivate
+            isFork
+            isArchived
+            createdAt
+            updatedAt
+            pushedAt
+            stargazerCount
+            forkCount
+            watchers {
+              totalCount
+            }
+            issues(states: OPEN) {
+              totalCount
+            }
+            pullRequests(states: OPEN) {
+              totalCount
+            }
+            releases {
+              totalCount
+            }
+            primaryLanguage {
+              name
+              color
+            }
+            licenseInfo {
+              name
+              spdxId
+            }
+            defaultBranchRef {
+              name
+            }
+          }
+        `;
+      });
 
-  for (let i = 0; i < repositories.length; i += maxBatchSize) {
-    const batch = repositories.slice(i, i + maxBatchSize);
-
-    const queries = batch.map((repo, index) => {
-      const key = `repo${i + index}`;
-      return `
-        ${key}: repository(owner: "${repo.owner}", name: "${repo.name}") {
-          id
-          databaseId
-          name
-          nameWithOwner
-          description
-          url
-          homepageUrl
-          isPrivate
-          isFork
-          isArchived
-          createdAt
-          updatedAt
-          pushedAt
-          stargazerCount
-          forkCount
-          watchers {
-            totalCount
-          }
-          issues(states: OPEN) {
-            totalCount
-          }
-          pullRequests(states: OPEN) {
-            totalCount
-          }
-          releases {
-            totalCount
-          }
-          primaryLanguage {
-            name
-            color
-          }
-          licenseInfo {
-            name
-            spdxId
-          }
-          defaultBranchRef {
-            name
-          }
+      const query = `
+        query {
+          ${queries.join('\n')}
         }
       `;
-    });
 
-    const query = `
-      query {
-        ${queries.join('\n')}
+      const response = await this.graphql(query);
+      
+      if (response.errors) {
+        throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
       }
-    `;
 
-    const response = await this.graphql(query);
-
-    if (response.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+      batch.forEach((repo, index) => {
+        const key = `repo${i + index}`;
+        const repoKey = `${repo.owner}/${repo.name}`;
+        if (response.data[key]) {
+          results[repoKey] = response.data[key];
+        }
+      });
     }
-
-    batch.forEach((repo, index) => {
-      const key = `repo${i + index}`;
-      const repoKey = `${repo.owner}/${repo.name}`;
-      if (response.data[key]) {
-        results[repoKey] = response.data[key];
-      }
-    });
+    
+    return results;
   }
 
-  return results;
-}
-private calculateQueryComplexity(query: string): number {
-  const fieldMatches = query.match(/\w+\s*{/g) || [];
-  const nestedFields = query.match(/{\s*\w+/g) || [];
-  const connectionFields = query.match(/(first|last):\s*\d+/g) || [];
-
-  let complexity = fieldMatches.length;
-  complexity += nestedFields.length * 2;
-  complexity += connectionFields.length * 5;
-
-  return complexity;
-}
-public async optimizedGraphql(query: string, variables?: Record<string, any>): Promise<any> {
-  const complexity = this.calculateQueryComplexity(query);
-
-  if (complexity > 1000) {
-    throw new Error('Query complexity too high. Consider breaking into smaller queries.');
+  private calculateQueryComplexity(query: string): number {
+    const fieldMatches = query.match(/\w+\s*{/g) || [];
+    const nestedFields = query.match(/{\s*\w+/g) || [];
+    const connectionFields = query.match(/(first|last):\s*\d+/g) || [];
+    
+    let complexity = fieldMatches.length;
+    complexity += nestedFields.length * 2;
+    complexity += connectionFields.length * 5;
+    
+    return complexity;
   }
 
-  if (this.shouldQueueRequest() || complexity > 500) {
-    return this.queueRequest(this.graphqlUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        query,
-        variables
-      })
-    });
+  public async optimizedGraphql(query: string, variables?: Record<string, any>): Promise<any> {
+    const complexity = this.calculateQueryComplexity(query);
+    
+    if (complexity > 1000) {
+      throw new Error('Query complexity too high. Consider breaking into smaller queries.');
+    }
+    
+    if (this.shouldQueueRequest() || complexity > 500) {
+      return this.queueRequest(this.graphqlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query,
+          variables
+        })
+      });
+    }
+    
+    return this.graphql(query, variables);
   }
 
-  return this.graphql(query, variables);
-}
-public buildOptimizedContributionQuery(username: string, from: Date, to: Date, fields?: string[]): string {
-  const defaultFields = [
-    'totalContributions',
-    'weeks { contributionDays { date contributionCount } }'
-  ];
-
-  const selectedFields = fields || defaultFields;
-
-  return `
-    query($username: String!, $from: DateTime!, $to: DateTime!) {
-      user(login: $username) {
-        contributionsCollection(from: $from, to: $to) {
-          contributionCalendar {
-            ${selectedFields.join('\n              ')}
+  public buildOptimizedContributionQuery(username: string, from: Date, to: Date, fields?: string[]): string {
+    const defaultFields = [
+      'totalContributions',
+      'weeks { contributionDays { date contributionCount } }'
+    ];
+    
+    const selectedFields = fields || defaultFields;
+    
+    return `
+      query($username: String!, $from: DateTime!, $to: DateTime!) {
+        user(login: $username) {
+          contributionsCollection(from: $from, to: $to) {
+            contributionCalendar {
+              ${selectedFields.join('\n              ')}
+            }
           }
         }
       }
-    }
-  `;
-}
-public buildOptimizedUserQuery(username: string, fields?: string[]): string {
-  const defaultFields = [
-    'id',
-    'databaseId',
-    'login',
-    'name',
-    'email',
-    'avatarUrl',
-    'bio',
-    'company',
-    'location',
-    'createdAt',
-    'updatedAt'
-  ];
+    `;
+  }
 
-  const selectedFields = fields || defaultFields;
-
-  return `
-    query($username: String!) {
-      user(login: $username) {
-        ${selectedFields.join('\n          ')}
+  public buildOptimizedUserQuery(username: string, fields?: string[]): string {
+    const defaultFields = [
+      'id',
+      'databaseId', 
+      'login',
+      'name',
+      'email',
+      'avatarUrl',
+      'bio',
+      'company',
+      'location',
+      'createdAt',
+      'updatedAt'
+    ];
+    
+    const selectedFields = fields || defaultFields;
+    
+    return `
+      query($username: String!) {
+        user(login: $username) {
+          ${selectedFields.join('\n          ')}
+        }
       }
-    }
-  `;
+    `;
+  }
 }
