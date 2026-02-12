@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { StreakDashboard } from "@/components/streak-dashboard";
+import { SecurityDashboard } from "@/components/security-dashboard";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -59,6 +60,8 @@ export default function Dashboard() {
         <div className="px-4 py-6 sm:px-0">
           <div className="space-y-6">
             <StreakDashboard />
+            
+            <SecurityDashboard />
             
             <div className="border-4 border-dashed border-gray-200 dark:border-github-border rounded-lg h-64 flex items-center justify-center">
               <div className="text-center">
