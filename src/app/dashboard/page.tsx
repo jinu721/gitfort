@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { LogoutButton } from "@/components/logout-button";
+import { StreakDashboard } from "@/components/streak-dashboard";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -56,14 +57,18 @@ export default function Dashboard() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 dark:border-github-border rounded-lg h-96 flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-github-text mb-4">
-                Welcome to your Dashboard
-              </h2>
-              <p className="text-gray-600 dark:text-github-muted">
-                Your GitHub Control Center is ready. Dashboard features will be implemented in upcoming tasks.
-              </p>
+          <div className="space-y-6">
+            <StreakDashboard />
+            
+            <div className="border-4 border-dashed border-gray-200 dark:border-github-border rounded-lg h-64 flex items-center justify-center">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-github-text mb-2">
+                  More Dashboard Features Coming Soon
+                </h2>
+                <p className="text-gray-600 dark:text-github-muted">
+                  Additional dashboard components will be implemented in upcoming tasks.
+                </p>
+              </div>
             </div>
           </div>
         </div>
