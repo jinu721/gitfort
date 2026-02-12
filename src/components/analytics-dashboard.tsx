@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CommitLineChart, LanguagePieChart, RepositoryBarChart, ContributionHeatmap } from './charts'
+import { DashboardSkeleton, EmptyState, ButtonLoading } from './ui'
 import type { 
   CommitFrequencyData, 
   LanguageUsageData, 
@@ -76,15 +77,7 @@ export function AnalyticsDashboard({ username }: AnalyticsDashboardProps) {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
+        <DashboardSkeleton />
       </div>
     )
   }
@@ -95,12 +88,13 @@ export function AnalyticsDashboard({ username }: AnalyticsDashboardProps) {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <h3 className="text-red-800 font-semibold">Error Loading Analytics</h3>
           <p className="text-red-600 mt-1">{error}</p>
-          <button 
+          <ButtonLoading
             onClick={fetchAnalyticsData}
+            isLoading={loading}
             className="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
             Retry
-          </button>
+          </ButtonLoading>
         </div>
       </div>
     )

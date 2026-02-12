@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CommitLineChart, RepositoryBarChart } from './charts'
+import { DashboardSkeleton, EmptyState, ButtonLoading, InlineLoading } from './ui'
 
 interface WorkflowRun {
   id: number
@@ -141,15 +142,7 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
   if (loading && !metrics) {
     return (
       <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
+        <DashboardSkeleton />
       </div>
     )
   }
@@ -183,13 +176,13 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
             <option value="300">5 minutes</option>
           </select>
           
-          <button
+          <ButtonLoading
             onClick={fetchCICDData}
-            disabled={loading}
+            isLoading={loading}
             className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          </ButtonLoading>
         </div>
       </div>
 
@@ -243,7 +236,11 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
                   </div>
                 ))}
                 {recentRuns.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No recent runs found</p>
+                  <EmptyState 
+                    title="No recent runs found"
+                    description="No workflow runs have been executed recently"
+                    icon="🔄"
+                  />
                 )}
               </div>
             </div>
@@ -273,7 +270,11 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
                   </div>
                 ))}
                 {failures.length === 0 && (
-                  <p className="text-gray-500 text-center py-4">No recent failures</p>
+                  <EmptyState 
+                    title="No recent failures"
+                    description="All recent builds have been successful"
+                    icon="✅"
+                  />
                 )}
               </div>
             </div>
