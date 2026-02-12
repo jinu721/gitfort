@@ -3,18 +3,22 @@ import { ContributionFetcher } from './contribution-fetcher'
 import { IStreak, IContributionDay } from './models/streak'
 import { GitHubAPIClient } from './github-api-client'
 import { StreakPersistenceService } from './streak-persistence-service'
+import { notificationService, NotificationContext } from './notification-service'
+import { User } from './models/user'
 
 export interface StreakUpdateResult {
   success: boolean
   streak: IStreak | null
   error?: string
   updated: boolean
+  notificationSent?: boolean
 }
 
 export interface StreakServiceConfig {
   cacheExpiryMinutes: number
   riskConfig: StreakRiskConfig
   autoUpdate: boolean
+  enableNotifications: boolean
 }
 
 export class StreakService {
@@ -30,7 +34,8 @@ export class StreakService {
       gracePeriodHours: 4,
       timezone: 'UTC'
     },
-    autoUpdate: true
+    autoUpdate: true,
+    enableNotifications: true
   }
 
   constructor(
@@ -71,6 +76,48 @@ export class StreakService {
         streak: null,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         updated: false
+      }
+    }
+  }
+
+  public async updateStreakDataWithNotifications(
+    userId: string, 
+    username: string, 
+    user: User,
+    lastNotificationSent: Date | null = null
+  ): Promise<StreakUpdateResult> {
+    try {
+      const updateResult = await this.updateStreakData(userId, username)
+      
+      if (!updateResult.success || !updateResult.streak || !this.config.enableNotifications) {
+        return updateResult
+      }
+
+      const notificationContext: NotificationContext = {
+        user,
+        currentStreak: updateResult.streak.currentStreak,
+        lastContributionDate: updateResult.streak.lastContributionDate,
+        lastNotificationSent
+      }
+
+      let notificationSent = false
+      try {
+        notificationSent = await notificationService.processStreakRiskNotification(notificationContext)
+      } catch (notificationError) {
+        console.error('Notification failed but streak update succeeded:', notificationError)
+      }
+
+      return {
+        ...updateResult,
+        notificationSent
+      }
+    } catch (error) {
+      return {
+        success: false,
+        streak: null,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        updated: false,
+        notificationSent: false
       }
     }
   }
@@ -261,5 +308,13 @@ export class StreakService {
       lastUpdate: data.lastUpdate,
       totalContributions: data.totalContributions
     }
+  }
+
+  public async sendTestNotification(userEmail: string, username: string): Promise<void> {
+    await notificationService.sendTestNotification(userEmail, username)
+  }
+
+  public async verifyEmailConfiguration(): Promise<boolean> {
+    return await notificationService.verifyEmailConfiguration()
   }
 }
