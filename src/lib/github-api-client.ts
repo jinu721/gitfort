@@ -66,6 +66,28 @@ export class GitHubAPIClient {
     }
   }
 
+  private shouldQueueRequest(): boolean {
+    if (!this.rateLimitStatus) return false;
+    
+    return this.rateLimitStatus.remaining <= 10;
+  }
+
+  private async handleRateLimitResponse(response: Response): Promise<void> {
+    if (response.status === 403) {
+      const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+      if (rateLimitRemaining === '0') {
+        const resetTime = response.headers.get('x-ratelimit-reset');
+        if (resetTime) {
+          const now = Math.floor(Date.now() / 1000);
+          const waitTime = (parseInt(resetTime) - now + 1) * 1000;
+          if (waitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+        }
+      }
+    }
+  }
+
   private async executeRequest(url: string, options: RequestInit): Promise<Response> {
     const headers = await this.getAuthHeaders();
     
@@ -80,6 +102,7 @@ export class GitHubAPIClient {
     this.updateRateLimitStatus(response.headers);
 
     if (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0') {
+      await this.handleRateLimitResponse(response);
       throw new Error('RATE_LIMIT_EXCEEDED');
     }
 
