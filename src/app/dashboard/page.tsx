@@ -1,8 +1,9 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { LogoutButton } from "@/components/logout-button";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -26,10 +27,6 @@ export default function Dashboard() {
     return null;
   }
 
-  const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/" });
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-github-bg">
       <nav className="bg-white dark:bg-github-surface shadow">
@@ -51,12 +48,7 @@ export default function Dashboard() {
                   {session.user?.name}
                 </span>
               </div>
-              <button
-                onClick={handleSignOut}
-                className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-md text-sm font-medium dark:bg-github-border dark:hover:bg-github-muted"
-              >
-                Sign out
-              </button>
+              <LogoutButton />
             </div>
           </div>
         </div>
