@@ -242,6 +242,11 @@ export class GitHubAPIClient {
     return response.workflow_runs || [];
   }
 
+  public async getWorkflowRuns(owner: string, repo: string): Promise<any[]> {
+    const response = await this.get(`/repos/${owner}/${repo}/actions/runs?per_page=100`);
+    return response.workflow_runs || [];
+  }
+
   public async getRepositoryContent(owner: string, repo: string, path: string): Promise<string> {
     const response = await this.get(`/repos/${owner}/${repo}/contents/${path}`);
 
