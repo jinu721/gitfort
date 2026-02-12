@@ -232,11 +232,6 @@ export class GitHubAPIClient {
     });
   }
 
-  public async getRepositories(username: string): Promise<any[]> {
-    const response = await this.get(`/users/${username}/repos?per_page=100&sort=updated`);
-    return response;
-  }
-
   public async getWorkflowRuns(owner: string, repo: string): Promise<any[]> {
     const response = await this.get(`/repos/${owner}/${repo}/actions/runs?per_page=100`);
     return response.workflow_runs || [];
