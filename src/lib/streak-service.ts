@@ -1,7 +1,8 @@
 import { StreakCalculator, StreakStats, StreakRiskConfig } from './streak-calculator'
 import { ContributionFetcher } from './contribution-fetcher'
-import { Streak, IStreak, IContributionDay } from './models/streak'
+import { IStreak, IContributionDay } from './models/streak'
 import { GitHubAPIClient } from './github-api-client'
+import { StreakPersistenceService } from './streak-persistence-service'
 
 export interface StreakUpdateResult {
   success: boolean
@@ -19,6 +20,7 @@ export interface StreakServiceConfig {
 export class StreakService {
   private calculator: StreakCalculator
   private contributionFetcher: ContributionFetcher
+  private persistenceService: StreakPersistenceService
   private config: StreakServiceConfig
 
   private readonly defaultConfig: StreakServiceConfig = {
@@ -37,6 +39,7 @@ export class StreakService {
   ) {
     this.calculator = new StreakCalculator()
     this.contributionFetcher = new ContributionFetcher(githubClient)
+    this.persistenceService = new StreakPersistenceService()
     this.config = { ...this.defaultConfig, ...config }
   }
 
@@ -73,11 +76,13 @@ export class StreakService {
   }
 
   public async getStreakData(userId: string): Promise<IStreak | null> {
-    try {
-      return await Streak.findOne({ userId }).exec()
-    } catch (error) {
-      throw new Error(`Failed to retrieve streak data: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const result = await this.persistenceService.getStreak(userId, { includeContributions: true })
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to retrieve streak data')
     }
+    
+    return result.data || null
   }
 
   public async calculateStreakFromData(contributionData: IContributionDay[]): Promise<StreakStats> {
@@ -136,45 +141,33 @@ export class StreakService {
   }
 
   public async refreshStreakData(userId: string, username: string): Promise<StreakUpdateResult> {
-    try {
-      await Streak.deleteOne({ userId })
-      return await this.updateStreakData(userId, username)
-    } catch (error) {
+    const deleteResult = await this.persistenceService.deleteStreak(userId)
+    
+    if (!deleteResult.success) {
       return {
         success: false,
         streak: null,
-        error: error instanceof Error ? error.message : 'Failed to refresh streak data',
+        error: deleteResult.error || 'Failed to delete existing streak data',
         updated: false
       }
     }
+    
+    return await this.updateStreakData(userId, username)
   }
 
   public async getStreakHistory(userId: string, days: number = 30): Promise<IContributionDay[]> {
-    try {
-      const streakData = await this.getStreakData(userId)
-      
-      if (!streakData || !streakData.contributionData) {
-        return []
-      }
-
-      const cutoffDate = new Date()
-      cutoffDate.setDate(cutoffDate.getDate() - days)
-      const cutoffString = cutoffDate.toISOString().split('T')[0]
-
-      return streakData.contributionData
-        .filter(contribution => contribution.date >= cutoffString)
-        .sort((a, b) => a.date.localeCompare(b.date))
-    } catch (error) {
+    const result = await this.persistenceService.getStreakHistory(userId, days)
+    
+    if (!result.success) {
       return []
     }
+    
+    return result.data || []
   }
 
   private async getExistingStreak(userId: string): Promise<IStreak | null> {
-    try {
-      return await Streak.findOne({ userId }).exec()
-    } catch (error) {
-      return null
-    }
+    const result = await this.persistenceService.getStreak(userId, { includeContributions: true })
+    return result.success ? (result.data || null) : null
   }
 
   private shouldUpdateStreak(streak: IStreak): boolean {
@@ -194,34 +187,19 @@ export class StreakService {
     contributionData: IContributionDay[],
     streakStats: StreakStats
   ): Promise<IStreak> {
-    const streakDocument = {
+    const result = await this.persistenceService.saveStreak(
       userId,
-      currentStreak: streakStats.currentStreak,
-      longestStreak: streakStats.longestStreak,
-      lastContributionDate: streakStats.lastContributionDate || new Date(),
-      contributionData,
-      calculatedAt: new Date()
+      streakStats.currentStreak,
+      streakStats.longestStreak,
+      streakStats.lastContributionDate || new Date(),
+      contributionData
+    )
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to save streak data')
     }
 
-    try {
-      const result = await Streak.findOneAndUpdate(
-        { userId },
-        streakDocument,
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: true
-        }
-      ).exec()
-
-      if (!result) {
-        throw new Error('Failed to save streak data')
-      }
-
-      return result
-    } catch (error) {
-      throw new Error(`Failed to save streak data: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
+    return result.data
   }
 
   private calculateHoursUntilRisk(lastContribution: Date | null): number {
@@ -247,37 +225,9 @@ export class StreakService {
     lastUpdate: Date | null
     totalContributions: number
   }> {
-    try {
-      const streakData = await this.getStreakData(userId)
-      
-      if (!streakData) {
-        return {
-          currentStreak: 0,
-          longestStreak: 0,
-          isAtRisk: true,
-          lastUpdate: null,
-          totalContributions: 0
-        }
-      }
-
-      const totalContributions = streakData.contributionData.reduce(
-        (sum, day) => sum + day.contributionCount,
-        0
-      )
-
-      const isAtRisk = this.calculator.isStreakAtRisk(
-        streakData.lastContributionDate,
-        this.config.riskConfig
-      )
-
-      return {
-        currentStreak: streakData.currentStreak,
-        longestStreak: streakData.longestStreak,
-        isAtRisk,
-        lastUpdate: streakData.calculatedAt,
-        totalContributions
-      }
-    } catch (error) {
+    const result = await this.persistenceService.getStreakSummary(userId)
+    
+    if (!result.success || !result.data) {
       return {
         currentStreak: 0,
         longestStreak: 0,
@@ -285,6 +235,31 @@ export class StreakService {
         lastUpdate: null,
         totalContributions: 0
       }
+    }
+
+    const { data } = result
+    
+    if (!data.hasData) {
+      return {
+        currentStreak: 0,
+        longestStreak: 0,
+        isAtRisk: true,
+        lastUpdate: null,
+        totalContributions: 0
+      }
+    }
+
+    const streakData = await this.getStreakData(userId)
+    const isAtRisk = streakData 
+      ? this.calculator.isStreakAtRisk(streakData.lastContributionDate, this.config.riskConfig)
+      : true
+
+    return {
+      currentStreak: data.currentStreak,
+      longestStreak: data.longestStreak,
+      isAtRisk,
+      lastUpdate: data.lastUpdate,
+      totalContributions: data.totalContributions
     }
   }
 }
