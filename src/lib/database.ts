@@ -39,8 +39,7 @@ class MongoDBConnection implements DatabaseConnection {
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,
-        bufferCommands: false,
-        bufferMaxEntries: 0
+        bufferCommands: false
       });
     } catch (error) {
       this.connectionPromise = null;
@@ -67,4 +66,4 @@ class MongoDBConnection implements DatabaseConnection {
 }
 
 export const database = MongoDBConnection.getInstance();
-export { DatabaseConnection };
+export type { DatabaseConnection };

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { connectToDatabase } from "@/lib/database";
+import { database } from "@/lib/database";
 import { StreakService } from "@/lib/streak-service";
 import { GitHubAPIClient } from "@/lib/github-api-client";
 
@@ -16,9 +16,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await connectToDatabase();
+    await database.connect();
 
-    const githubClient = new GitHubAPIClient(session.accessToken || "");
+    const githubClient = new GitHubAPIClient();
     const streakService = new StreakService(githubClient);
 
     const streakSummary = await streakService.getStreakSummary(session.user.id);
