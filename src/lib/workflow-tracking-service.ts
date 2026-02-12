@@ -1,6 +1,6 @@
 import { WorkflowDataFetcher, WorkflowRun } from './workflow-fetcher'
 import { WorkflowRunModel } from './models/workflow-run'
-import { connectToDatabase } from './database'
+import { database } from './database'
 
 export interface WorkflowMetrics {
   totalRuns: number
@@ -46,7 +46,7 @@ export class WorkflowTrackingService {
     repo: string, 
     days: number = 30
   ): Promise<void> {
-    await connectToDatabase()
+    await database.connect()
 
     const runs = await this.workflowFetcher.fetchRecentWorkflowRuns(owner, repo, days)
     

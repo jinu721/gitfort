@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     const githubClient = new GitHubAPIClient()
-    const repositories = await githubClient.getUserRepositories(session.user.username)
+    const repositories = await githubClient.getRepositories(session.user.username)
 
     const formattedRepos = repositories.map(repo => ({
       owner: repo.owner.login,

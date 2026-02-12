@@ -14,16 +14,14 @@ const UserSchema = new Schema<IUser>({
   githubId: {
     type: Number,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   username: {
     type: String,
     required: true,
     trim: true,
     minlength: 1,
-    maxlength: 39,
-    index: true
+    maxlength: 39
   },
   email: {
     type: String,
@@ -47,9 +45,5 @@ const UserSchema = new Schema<IUser>({
   timestamps: true,
   collection: 'users'
 })
-
-UserSchema.index({ githubId: 1 }, { unique: true })
-UserSchema.index({ username: 1 })
-UserSchema.index({ createdAt: 1 })
 
 export const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema)

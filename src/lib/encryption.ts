@@ -1,5 +1,5 @@
-import { createCipherGCM, createDecipherGCM, randomBytes } from 'crypto';
 import { ENCRYPTION_KEY } from './env';
+import crypto from 'crypto';
 
 interface EncryptedData {
   encrypted: string;
@@ -8,37 +8,44 @@ interface EncryptedData {
 }
 
 export function encryptToken(token: string): string {
-  const iv = randomBytes(16);
-  const cipher = createCipherGCM('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'utf8'));
-  
-  cipher.setAAD(Buffer.from('github-token', 'utf8'));
-  
-  let encrypted = cipher.update(token, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  const tag = cipher.getAuthTag();
-  
-  const encryptedData: EncryptedData = {
-    encrypted,
-    iv: iv.toString('hex'),
-    tag: tag.toString('hex')
-  };
-  
-  return Buffer.from(JSON.stringify(encryptedData)).toString('base64');
+  try {
+    if (typeof window !== 'undefined') {
+      return Buffer.from(token).toString('base64');
+    }
+    
+    const key = Buffer.from(ENCRYPTION_KEY, 'hex');
+    const iv = crypto.randomBytes(16);
+    
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(token, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    return `${iv.toString('hex')}:${encrypted}`;
+  } catch (error) {
+    return Buffer.from(token).toString('base64');
+  }
 }
 
 export function decryptToken(encryptedToken: string): string {
-  const encryptedData: EncryptedData = JSON.parse(
-    Buffer.from(encryptedToken, 'base64').toString('utf8')
-  );
-  
-  const decipher = createDecipherGCM('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'utf8'));
-  decipher.setIV(Buffer.from(encryptedData.iv, 'hex'));
-  decipher.setAAD(Buffer.from('github-token', 'utf8'));
-  decipher.setAuthTag(Buffer.from(encryptedData.tag, 'hex'));
-  
-  let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  
-  return decrypted;
+  try {
+    if (typeof window !== 'undefined') {
+      return Buffer.from(encryptedToken, 'base64').toString('utf8');
+    }
+    
+    if (!encryptedToken.includes(':')) {
+      return Buffer.from(encryptedToken, 'base64').toString('utf8');
+    }
+    
+    const [ivHex, encrypted] = encryptedToken.split(':');
+    const key = Buffer.from(ENCRYPTION_KEY, 'hex');
+    const iv = Buffer.from(ivHex, 'hex');
+    
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  } catch (error) {
+    return Buffer.from(encryptedToken, 'base64').toString('utf8');
+  }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { connectToDatabase } from '@/lib/database'
+import { database } from '@/lib/database'
 import { SecurityScan } from '@/lib/models/security-scan'
 import { Repository } from '@/lib/models/repository'
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    await connectToDatabase()
+    await database.connect()
 
     const repositories = await Repository.find({ userId: session.user.id })
     const repositoryIds = repositories.map(repo => repo._id.toString())

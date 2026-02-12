@@ -1,5 +1,5 @@
 import { Streak, IStreak, IContributionDay } from './models/streak'
-import { connectToDatabase } from './database'
+import { database } from './database'
 
 export interface StreakPersistenceResult {
   success: boolean
@@ -22,7 +22,7 @@ export class StreakPersistenceService {
     contributionData: IContributionDay[]
   ): Promise<StreakPersistenceResult> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const streakDocument = {
         userId,
@@ -57,7 +57,7 @@ export class StreakPersistenceService {
 
   public async getStreak(userId: string, options: StreakQueryOptions = {}): Promise<StreakPersistenceResult> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       let query = Streak.findOne({ userId })
 
@@ -86,7 +86,7 @@ export class StreakPersistenceService {
     lastContributionDate: Date
   ): Promise<StreakPersistenceResult> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const result = await Streak.findOneAndUpdate(
         { userId },
@@ -119,7 +119,7 @@ export class StreakPersistenceService {
     contributionData: IContributionDay[]
   ): Promise<StreakPersistenceResult> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const result = await Streak.findOneAndUpdate(
         { userId },
@@ -147,7 +147,7 @@ export class StreakPersistenceService {
 
   public async deleteStreak(userId: string): Promise<StreakPersistenceResult> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const result = await Streak.findOneAndDelete({ userId }).exec()
 
@@ -168,7 +168,7 @@ export class StreakPersistenceService {
     days: number = 30
   ): Promise<{ success: boolean; data?: IContributionDay[]; error?: string }> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const streak = await Streak.findOne({ userId }).select('contributionData').exec()
 
@@ -211,7 +211,7 @@ export class StreakPersistenceService {
     error?: string
   }> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const streak = await Streak.findOne({ userId }).exec()
 
@@ -257,7 +257,7 @@ export class StreakPersistenceService {
     error?: string
   }> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       let query = Streak.find({})
 
@@ -286,7 +286,7 @@ export class StreakPersistenceService {
 
   public async streakExists(userId: string): Promise<{ success: boolean; exists?: boolean; error?: string }> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const count = await Streak.countDocuments({ userId }).exec()
 
@@ -308,7 +308,7 @@ export class StreakPersistenceService {
     error?: string
   }> {
     try {
-      await connectToDatabase()
+      await database.connect()
 
       const streak = await Streak.findOne({ userId }).select('calculatedAt').exec()
 

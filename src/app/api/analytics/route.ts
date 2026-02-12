@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { GitHubAPIClient } from '@/lib/github-api-client'
 import { AnalyticsService } from '@/lib/analytics-service'
 import { AnalyticsProcessor } from '@/lib/analytics-processor'
-import { connectToDatabase } from '@/lib/database'
+import { database } from '@/lib/database'
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    await connectToDatabase()
+    await database.connect()
 
     const githubClient = new GitHubAPIClient()
     const analyticsService = new AnalyticsService(githubClient)
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username is required' }, { status: 400 })
     }
 
-    await connectToDatabase()
+    await database.connect()
 
     const githubClient = new GitHubAPIClient()
     const analyticsProcessor = new AnalyticsProcessor(githubClient)

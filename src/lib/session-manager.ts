@@ -1,4 +1,4 @@
-import { connectToDatabase } from "./database";
+import { database } from "./database";
 import { User, IUser } from "./models/user";
 import { encryptToken } from "./encryption";
 
@@ -11,7 +11,7 @@ export interface UserSessionData {
 }
 
 export async function createOrUpdateUser(userData: UserSessionData): Promise<IUser> {
-  await connectToDatabase();
+  await database.connect();
   
   const encryptedToken = encryptToken(userData.accessToken);
   
@@ -23,7 +23,7 @@ export async function createOrUpdateUser(userData: UserSessionData): Promise<IUs
     },
     { 
       upsert: true, 
-      new: true,
+      returnDocument: 'after',
       runValidators: true
     }
   );
@@ -32,13 +32,13 @@ export async function createOrUpdateUser(userData: UserSessionData): Promise<IUs
 }
 
 export async function getUserByGithubId(githubId: number): Promise<IUser | null> {
-  await connectToDatabase();
+  await database.connect();
   
   return User.findOne({ githubId }).select('+accessToken');
 }
 
 export async function updateUserToken(githubId: number, accessToken: string): Promise<void> {
-  await connectToDatabase();
+  await database.connect();
   
   const encryptedToken = encryptToken(accessToken);
   
@@ -50,7 +50,7 @@ export async function updateUserToken(githubId: number, accessToken: string): Pr
 }
 
 export async function deleteUserSession(githubId: number): Promise<void> {
-  await connectToDatabase();
+  await database.connect();
   
   await User.findOneAndDelete({ githubId });
 }

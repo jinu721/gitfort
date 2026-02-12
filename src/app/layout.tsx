@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Fjalla_One } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/session-provider";
 import { ThemeProvider } from "@/components/ui/theme-provider";
@@ -14,6 +14,12 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono"
 });
 
+const fjallaOne = Fjalla_One({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-fjalla-one"
+});
+
 export const metadata: Metadata = {
   title: "GitFort",
   description: "GitFort - Advanced monitoring, analytics, and security scanning for your GitHub repositories",
@@ -26,7 +32,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${fjallaOne.variable} font-sans antialiased`}>
         <ThemeProvider defaultTheme="system">
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>

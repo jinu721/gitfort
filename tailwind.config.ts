@@ -12,6 +12,7 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-jetbrains-mono)', 'monospace'],
+        'fjalla-one': ['var(--font-fjalla-one)', 'sans-serif'],
       },
       colors: {
         background: "var(--background)",

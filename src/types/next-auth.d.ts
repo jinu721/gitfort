@@ -11,11 +11,13 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       githubId?: string;
+      username?: string;
     };
   }
 
   interface User {
     githubId?: string;
+    username?: string;
   }
 
   interface Profile {

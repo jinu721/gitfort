@@ -34,8 +34,7 @@ const StreakSchema = new Schema<IStreak>({
     type: String,
     required: true,
     unique: true,
-    ref: 'User',
-    index: true
+    ref: 'User'
   },
   currentStreak: {
     type: Number,
@@ -61,17 +60,11 @@ const StreakSchema = new Schema<IStreak>({
   calculatedAt: {
     type: Date,
     required: true,
-    default: Date.now,
-    index: true
+    default: Date.now
   }
 }, {
   timestamps: true,
   collection: 'streaks'
 })
-
-StreakSchema.index({ userId: 1 }, { unique: true })
-StreakSchema.index({ calculatedAt: 1 })
-StreakSchema.index({ currentStreak: -1 })
-StreakSchema.index({ longestStreak: -1 })
 
 export const Streak = mongoose.models.Streak || mongoose.model<IStreak>('Streak', StreakSchema)

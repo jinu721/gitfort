@@ -1,7 +1,7 @@
 import { WorkflowRunModel } from './models/workflow-run'
 import { WorkflowRun } from './workflow-fetcher'
 import { BuildFailure } from './build-failure-detector'
-import { connectToDatabase } from './database'
+import { database } from './database'
 
 export interface WorkflowHistoryQuery {
   repository?: string
@@ -38,7 +38,7 @@ export class WorkflowPersistenceService {
   }
 
   async storeWorkflowRun(run: WorkflowRun, repository: string): Promise<void> {
-    await connectToDatabase()
+    await database.connect()
 
     try {
       const existingRun = await WorkflowRunModel.findOne({ 
@@ -81,7 +81,7 @@ export class WorkflowPersistenceService {
   }
 
   async storeWorkflowRuns(runs: WorkflowRun[], repository: string): Promise<void> {
-    await connectToDatabase()
+    await database.connect()
 
     const operations = runs.map(run => ({
       updateOne: {
@@ -118,7 +118,7 @@ export class WorkflowPersistenceService {
   }
 
   async getWorkflowHistory(query: WorkflowHistoryQuery = {}): Promise<any[]> {
-    await connectToDatabase()
+    await database.connect()
 
     const filter: any = {}
     
@@ -152,7 +152,7 @@ export class WorkflowPersistenceService {
     repository: string, 
     days: number = 30
   ): Promise<WorkflowTrendData[]> {
-    await connectToDatabase()
+    await database.connect()
 
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
@@ -228,7 +228,7 @@ export class WorkflowPersistenceService {
     mostFrequentBranch: string
     mostActiveActor: string
   }> {
-    await connectToDatabase()
+    await database.connect()
 
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
@@ -315,7 +315,7 @@ export class WorkflowPersistenceService {
     deletedRecords: number
     compressedRecords: number
   }> {
-    await connectToDatabase()
+    await database.connect()
 
     const policy = { ...this.defaultRetentionPolicy, ...retentionPolicy }
     const maxAgeDate = new Date(Date.now() - policy.maxAge)
@@ -374,7 +374,7 @@ export class WorkflowPersistenceService {
     failuresByBranch: Record<string, number>
     recentFailures: any[]
   }> {
-    await connectToDatabase()
+    await database.connect()
 
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)

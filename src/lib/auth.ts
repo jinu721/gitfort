@@ -94,10 +94,16 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (token) {
-        session.accessToken = token.error ? undefined : decryptToken(token.accessToken as string);
+        try {
+          session.accessToken = token.error ? undefined : decryptToken(token.accessToken as string);
+        } catch (error) {
+          console.error('Error decrypting token:', error);
+          session.accessToken = undefined;
+        }
         session.user.id = token.githubId as string;
         session.user.githubId = token.githubId as string;
         session.user.name = token.username as string;
+        session.user.username = token.username as string; // Add username to session
         session.user.email = token.email as string;
         session.user.image = token.avatarUrl as string;
         
