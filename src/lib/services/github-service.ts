@@ -45,6 +45,10 @@ export interface StreakData {
 
 class GitHubService {
   private api: AxiosInstance;
+  private requestQueue: Array<() => Promise<any>> = [];
+  private isProcessingQueue = false;
+  private lastRequestTime = 0;
+  private readonly MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
 
   constructor(token?: string) {
     this.api = axios.create({
@@ -52,14 +56,94 @@ class GitHubService {
       headers: {
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'GitFort-App',
-        ...(token && { 'Authorization': `token ${token}` })
+        ...(token && { 'Authorization': `Bearer ${token}` })
       },
       timeout: 30000
+    });
+
+    // Add response interceptor for rate limiting
+    this.api.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error.response?.status === 429) {
+          const retryAfter = parseInt(error.response.headers['retry-after'] || '60');
+          console.warn(`Rate limited. Retrying after ${retryAfter} seconds...`);
+          await this.delay(retryAfter * 1000);
+          return this.api.request(error.config);
+        }
+
+        if (error.response?.status === 403 && error.response.headers['x-ratelimit-remaining'] === '0') {
+          const resetTime = parseInt(error.response.headers['x-ratelimit-reset'] || '0');
+          const waitTime = Math.max(0, (resetTime * 1000) - Date.now());
+          console.warn(`Rate limit exceeded. Waiting ${Math.ceil(waitTime / 1000)} seconds...`);
+          await this.delay(waitTime);
+          return this.api.request(error.config);
+        }
+
+        throw error;
+      }
+    );
+  }
+
+  /**
+   * Add delay between requests
+   */
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Rate-limited request wrapper
+   */
+  private async makeRequest<T>(requestFn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push(async () => {
+        try {
+          // Ensure minimum interval between requests
+          const now = Date.now();
+          const timeSinceLastRequest = now - this.lastRequestTime;
+          if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+            await this.delay(this.MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+          }
+
+          const result = await requestFn();
+          this.lastRequestTime = Date.now();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      this.processQueue();
     });
   }
 
   /**
-   * Fetch all repositories with proper pagination
+   * Process request queue sequentially
+   */
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    while (this.requestQueue.length > 0) {
+      const request = this.requestQueue.shift();
+      if (request) {
+        try {
+          await request();
+        } catch (error) {
+          console.error('Request failed:', error);
+        }
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
+  /**
+   * Fetch all repositories with proper pagination and rate limiting
    */
   async getAllRepositories(username: string): Promise<GitHubRepository[]> {
     const repositories: GitHubRepository[] = [];
@@ -68,28 +152,29 @@ class GitHubService {
 
     try {
       while (true) {
-        const response = await this.api.get(`/users/${username}/repos`, {
-          params: {
-            per_page: perPage,
-            page: page,
-            sort: 'updated',
-            type: 'all' // Include all repos (public, private, forks)
-          }
+        const repos = await this.makeRequest(async () => {
+          const response = await this.api.get(`/users/${username}/repos`, {
+            params: {
+              per_page: perPage,
+              page: page,
+              sort: 'updated',
+              type: 'all' // Include all repos (public, private, forks)
+            }
+          });
+          return response.data;
         });
 
-        const repos = response.data;
-        
         if (repos.length === 0) {
           break; // No more repositories
         }
 
         repositories.push(...repos);
-        
+
         // If we got less than perPage, we're on the last page
         if (repos.length < perPage) {
           break;
         }
-        
+
         page++;
       }
 
@@ -97,19 +182,27 @@ class GitHubService {
       return repositories;
     } catch (error) {
       console.error('Error fetching repositories:', error);
+      if (error.response?.status === 429) {
+        throw new Error('GitHub API rate limit exceeded. Please try again later.');
+      }
       throw new Error('Failed to fetch repositories');
     }
   }
 
   /**
-   * Get user profile information
+   * Get user profile information with rate limiting
    */
   async getUserProfile(username: string): Promise<GitHubUser> {
     try {
-      const response = await this.api.get(`/users/${username}`);
-      return response.data;
+      return await this.makeRequest(async () => {
+        const response = await this.api.get(`/users/${username}`);
+        return response.data;
+      });
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      if (error.response?.status === 429) {
+        throw new Error('GitHub API rate limit exceeded. Please try again later.');
+      }
       throw new Error('Failed to fetch user profile');
     }
   }
@@ -160,7 +253,7 @@ class GitHubService {
     for (let i = sortedContributions.length - 1; i >= 0; i--) {
       const contribution = sortedContributions[i];
       const contributionDate = new Date(contribution.date);
-      
+
       if (contribution.count > 0) {
         if (currentStreak === 0) {
           streakEnd = contribution.date;
@@ -198,12 +291,14 @@ class GitHubService {
   }
 
   /**
-   * Get repository languages with pagination
+   * Get repository languages with pagination and rate limiting
    */
   async getRepositoryLanguages(owner: string, repo: string): Promise<Record<string, number>> {
     try {
-      const response = await this.api.get(`/repos/${owner}/${repo}/languages`);
-      return response.data;
+      return await this.makeRequest(async () => {
+        const response = await this.api.get(`/repos/${owner}/${repo}/languages`);
+        return response.data;
+      });
     } catch (error) {
       console.error(`Error fetching languages for ${owner}/${repo}:`, error);
       return {};
@@ -211,29 +306,31 @@ class GitHubService {
   }
 
   /**
-   * Get repository commits count
+   * Get repository commits count with rate limiting
    */
   async getRepositoryCommitsCount(owner: string, repo: string): Promise<number> {
     try {
-      // Get the first page to check total count
-      const response = await this.api.get(`/repos/${owner}/${repo}/commits`, {
-        params: {
-          per_page: 1,
-          page: 1
+      return await this.makeRequest(async () => {
+        // Get the first page to check total count
+        const response = await this.api.get(`/repos/${owner}/${repo}/commits`, {
+          params: {
+            per_page: 1,
+            page: 1
+          }
+        });
+
+        // GitHub doesn't provide total count directly, so we estimate
+        // This is a limitation of GitHub API
+        const linkHeader = response.headers.link;
+        if (linkHeader) {
+          const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
+          if (lastPageMatch) {
+            return parseInt(lastPageMatch[1]);
+          }
         }
+
+        return 1; // At least 1 commit if we got a response
       });
-
-      // GitHub doesn't provide total count directly, so we estimate
-      // This is a limitation of GitHub API
-      const linkHeader = response.headers.link;
-      if (linkHeader) {
-        const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
-        if (lastPageMatch) {
-          return parseInt(lastPageMatch[1]);
-        }
-      }
-
-      return 1; // At least 1 commit if we got a response
     } catch (error) {
       console.error(`Error fetching commits for ${owner}/${repo}:`, error);
       return 0;
@@ -246,7 +343,7 @@ class GitHubService {
   private parseContributionsFromSVG(html: string): GitHubContribution[] {
     // This is a simplified parser - in production, you'd want a more robust solution
     const contributions: GitHubContribution[] = [];
-    
+
     // Extract data-date and data-count from SVG rectangles
     const rectRegex = /<rect[^>]*data-date="([^"]*)"[^>]*data-count="([^"]*)"[^>]*>/g;
     let match;
@@ -272,11 +369,11 @@ class GitHubService {
   private generateMockContributions(): GitHubContribution[] {
     const contributions: GitHubContribution[] = [];
     const today = new Date();
-    
+
     for (let i = 365; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      
+
       const count = Math.random() > 0.3 ? Math.floor(Math.random() * 10) : 0;
       const level = count === 0 ? 0 : count <= 3 ? 1 : count <= 6 ? 2 : count <= 9 ? 3 : 4;
 
