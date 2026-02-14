@@ -35,52 +35,72 @@ class DashboardService {
   /**
    * Get comprehensive dashboard statistics
    */
-  async getDashboardStats(username: string): Promise<DashboardStats> {
-    try {
-      console.log(`Fetching dashboard stats for ${username}...`);
+  /**
+     * Get comprehensive dashboard statistics with improved error handling
+     */
+    async getDashboardStats(username: string): Promise<DashboardStats> {
+      try {
+        console.log(`Fetching dashboard stats for ${username}...`);
 
-      // Fetch all data in parallel for better performance
-      const [repositories, contributions, userProfile] = await Promise.all([
-        this.githubService.getAllRepositories(username),
-        this.githubService.getContributions(username),
-        this.githubService.getUserProfile(username)
-      ]);
+        // Fetch core data first
+        const repositories = await this.githubService.getAllRepositories(username);
+        console.log(`Found ${repositories.length} repositories`);
 
-      console.log(`Found ${repositories.length} repositories and ${contributions.length} contribution days`);
+        // Fetch user profile and contributions in parallel
+        const [userProfile, contributions] = await Promise.allSettled([
+          this.githubService.getUserProfile(username),
+          this.githubService.getContributions(username)
+        ]);
 
-      // Calculate streak data
-      const streakData = this.githubService.calculateStreakData(contributions);
+        // Handle contributions data
+        let contributionsData: any[] = [];
+        if (contributions.status === 'fulfilled') {
+          contributionsData = contributions.value;
+          console.log(`Found ${contributionsData.length} contribution days`);
+        } else {
+          console.warn('Failed to fetch contributions, using fallback data');
+          contributionsData = []; // Will use mock data in calculateStreakData
+        }
 
-      // Calculate language statistics
-      const languageStats = await this.calculateLanguageStats(repositories);
+        // Calculate streak data
+        const streakData = this.githubService.calculateStreakData(contributionsData);
 
-      // Calculate repository activity
-      const activeRepos = repositories.filter(repo => {
-        const lastUpdate = new Date(repo.pushed_at);
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        return lastUpdate > thirtyDaysAgo;
-      });
+        // Calculate language statistics (reduced API calls)
+        const languageStats = await this.calculateLanguageStats(repositories);
 
-      // Estimate total commits (GitHub API limitation)
-      const totalCommits = await this.estimateTotalCommits(repositories.slice(0, 10)); // Sample first 10 repos
+        // Calculate repository activity (no additional API calls)
+        const activeRepos = repositories.filter(repo => {
+          const lastUpdate = new Date(repo.pushed_at);
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          return lastUpdate > thirtyDaysAgo;
+        });
 
-      return {
-        currentStreak: streakData.currentStreak,
-        totalContributions: streakData.totalContributions,
-        totalRepositories: repositories.length,
-        totalCommits,
-        buildSuccessRate: 94.2, // This would come from CI/CD integration
-        securityIssues: Math.floor(Math.random() * 5), // This would come from security scanning
-        activeRepositories: activeRepos.length,
-        primaryLanguage: languageStats.length > 0 ? languageStats[0].name : 'Unknown',
-        languageStats: languageStats.slice(0, 5) // Top 5 languages
-      };
-    } catch (error) {
-      console.error('Error fetching dashboard stats:', error);
-      throw new Error('Failed to fetch dashboard statistics');
+        // Estimate total commits with reduced API calls
+        const totalCommits = await this.estimateTotalCommits(repositories);
+
+        return {
+          currentStreak: streakData.currentStreak,
+          totalContributions: streakData.totalContributions,
+          totalRepositories: repositories.length,
+          totalCommits,
+          buildSuccessRate: 94.2, // This would come from CI/CD integration
+          securityIssues: Math.floor(Math.random() * 5), // This would come from security scanning
+          activeRepositories: activeRepos.length,
+          primaryLanguage: languageStats.length > 0 ? languageStats[0].name : 'Unknown',
+          languageStats: languageStats.slice(0, 5) // Top 5 languages
+        };
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+
+        // Provide more specific error messages
+        if (error.message?.includes('rate limit')) {
+          throw new Error('GitHub API rate limit exceeded. Please try again in a few minutes.');
+        }
+
+        throw new Error(`Failed to fetch dashboard statistics: ${error.message}`);
+      }
     }
-  }
 
   /**
    * Get repository activity data
@@ -122,42 +142,97 @@ class DashboardService {
   /**
    * Calculate language statistics from repositories
    */
-  private async calculateLanguageStats(repositories: GitHubRepository[]): Promise<Array<{
-    name: string;
-    percentage: number;
-    color: string;
-  }>> {
-    const languageMap = new Map<string, number>();
-    let totalBytes = 0;
+  /**
+     * Calculate language statistics from repositories with reduced API calls
+     */
+    private async calculateLanguageStats(repositories: GitHubRepository[]): Promise<Array<{
+      name: string;
+      percentage: number;
+      color: string;
+    }>> {
+      const languageMap = new Map<string, number>();
 
-    // Sample repositories to avoid rate limiting (take every 3rd repo)
-    const sampleRepos = repositories.filter((_, index) => index % 3 === 0).slice(0, 20);
-
-    console.log(`Analyzing languages for ${sampleRepos.length} repositories...`);
-
-    for (const repo of sampleRepos) {
-      try {
-        const languages = await this.githubService.getRepositoryLanguages(repo.owner.login, repo.name);
-        
-        for (const [language, bytes] of Object.entries(languages)) {
-          languageMap.set(language, (languageMap.get(language) || 0) + bytes);
-          totalBytes += bytes;
+      // Use repository language field first (no API call needed)
+      repositories.forEach(repo => {
+        if (repo.language) {
+          languageMap.set(repo.language, (languageMap.get(repo.language) || 0) + 1);
         }
-      } catch (error) {
-        console.error(`Failed to fetch languages for ${repo.full_name}`);
+      });
+
+      // If we have enough data from repository language field, use it
+      if (languageMap.size > 0) {
+        const total = repositories.length;
+        const languageStats = Array.from(languageMap.entries())
+          .map(([name, count]) => ({
+            name,
+            percentage: (count / total) * 100,
+            color: this.getLanguageColor(name)
+          }))
+          .sort((a, b) => b.percentage - a.percentage);
+
+        return languageStats;
       }
+
+      // Fallback: Sample a few repositories for detailed language analysis
+      const sampleRepos = repositories.filter((_, index) => index % 5 === 0).slice(0, 10);
+      let totalBytes = 0;
+
+      console.log(`Analyzing languages for ${sampleRepos.length} repositories...`);
+
+      for (const repo of sampleRepos) {
+        try {
+          const languages = await this.githubService.getRepositoryLanguages(repo.owner.login, repo.name);
+
+          for (const [language, bytes] of Object.entries(languages)) {
+            languageMap.set(language, (languageMap.get(language) || 0) + bytes);
+            totalBytes += bytes;
+          }
+        } catch (error) {
+          console.error(`Failed to fetch languages for ${repo.full_name}`);
+          // Continue with other repos instead of failing
+        }
+      }
+
+      const languageStats = Array.from(languageMap.entries())
+        .map(([name, bytes]) => ({
+          name,
+          percentage: totalBytes > 0 ? (bytes / totalBytes) * 100 : 0,
+          color: this.getLanguageColor(name)
+        }))
+        .sort((a, b) => b.percentage - a.percentage);
+
+      return languageStats;
     }
 
-    const languageStats = Array.from(languageMap.entries())
-      .map(([name, bytes]) => ({
-        name,
-        percentage: totalBytes > 0 ? (bytes / totalBytes) * 100 : 0,
-        color: this.getLanguageColor(name)
-      }))
-      .sort((a, b) => b.percentage - a.percentage);
+    /**
+     * Estimate total commits across repositories with reduced API calls
+     */
+    private async estimateTotalCommits(repositories: GitHubRepository[]): Promise<number> {
+      // Sample only a few repositories to avoid rate limiting
+      const sampleRepos = repositories.slice(0, 5);
+      let totalCommits = 0;
+      let successfulRequests = 0;
 
-    return languageStats;
-  }
+      for (const repo of sampleRepos) {
+        try {
+          const commits = await this.githubService.getRepositoryCommitsCount(repo.owner.login, repo.name);
+          totalCommits += commits;
+          successfulRequests++;
+        } catch (error) {
+          console.error(`Failed to fetch commits for ${repo.full_name}`);
+          // Continue with other repos
+        }
+      }
+
+      if (successfulRequests === 0) {
+        // Fallback estimation based on repository age and activity
+        return repositories.length * 10; // Rough estimate
+      }
+
+      // Extrapolate based on successful samples
+      const averageCommitsPerRepo = totalCommits / successfulRequests;
+      return Math.floor(averageCommitsPerRepo * repositories.length);
+    }
 
   /**
    * Estimate total commits across repositories
