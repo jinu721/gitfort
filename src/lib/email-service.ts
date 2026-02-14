@@ -7,6 +7,7 @@ export interface EmailOptions {
   subject: string
   html: string
   text?: string
+  priority?: 'high' | 'normal' | 'low'
 }
 
 export interface StreakRiskData {
@@ -17,8 +18,17 @@ export interface StreakRiskData {
   hoursUntilBreak: number
 }
 
+export interface EmailDeliveryResult {
+  success: boolean
+  messageId?: string
+  error?: string
+  retryCount: number
+}
+
 class EmailService {
   private transporter: nodemailer.Transporter
+  private maxRetries = 3
+  private retryDelay = 1000 // 1 second
 
   constructor() {
     this.transporter = nodemailer.createTransport({
@@ -28,29 +38,56 @@ class EmailService {
       auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS
-      }
+      },
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 10
     })
   }
 
-  async sendEmail(options: EmailOptions): Promise<void> {
+  async sendEmail(options: EmailOptions): Promise<EmailDeliveryResult> {
+    return this.sendEmailWithRetry(options, 0)
+  }
+
+  private async sendEmailWithRetry(options: EmailOptions, retryCount: number): Promise<EmailDeliveryResult> {
     try {
-      await this.transporter.sendMail({
+      const result = await this.transporter.sendMail({
         from: env.SMTP_FROM,
         to: options.to,
         subject: options.subject,
         html: options.html,
-        text: options.text
+        text: options.text,
+        priority: options.priority || 'normal'
       })
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        retryCount
+      }
     } catch (error) {
-      console.error('Failed to send email:', error)
-      throw new Error('Email delivery failed')
+      console.error(`Email delivery attempt ${retryCount + 1} failed:`, error)
+      
+      if (retryCount < this.maxRetries) {
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay * (retryCount + 1)))
+        return this.sendEmailWithRetry(options, retryCount + 1)
+      }
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        retryCount
+      }
     }
   }
 
   async sendStreakRiskNotification(
     userEmail: string,
     streakData: StreakRiskData
-  ): Promise<void> {
+  ): Promise<EmailDeliveryResult> {
     const templateData: StreakRiskTemplateData = {
       username: streakData.username,
       currentStreak: streakData.currentStreak,
@@ -61,11 +98,12 @@ class EmailService {
 
     const template = EmailTemplates.getStreakRiskTemplate(templateData)
 
-    await this.sendEmail({
+    return this.sendEmail({
       to: userEmail,
       subject: template.subject,
       html: template.html,
-      text: template.text
+      text: template.text,
+      priority: streakData.riskLevel === 'critical' ? 'high' : 'normal'
     })
   }
 
@@ -77,6 +115,10 @@ class EmailService {
       console.error('SMTP connection verification failed:', error)
       return false
     }
+  }
+
+  async close(): Promise<void> {
+    this.transporter.close()
   }
 }
 
