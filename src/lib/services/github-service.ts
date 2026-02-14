@@ -182,7 +182,7 @@ class GitHubService {
       return repositories;
     } catch (error) {
       console.error('Error fetching repositories:', error);
-      if (error.response?.status === 429) {
+      if (error instanceof Error && 'response' in error && (error as any).response?.status === 429) {
         throw new Error('GitHub API rate limit exceeded. Please try again later.');
       }
       throw new Error('Failed to fetch repositories');
@@ -200,7 +200,7 @@ class GitHubService {
       });
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      if (error.response?.status === 429) {
+      if (error instanceof Error && 'response' in error && (error as any).response?.status === 429) {
         throw new Error('GitHub API rate limit exceeded. Please try again later.');
       }
       throw new Error('Failed to fetch user profile');

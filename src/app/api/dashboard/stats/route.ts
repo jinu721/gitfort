@@ -60,8 +60,10 @@ export async function POST(request: NextRequest) {
     } catch (serviceError) {
       console.error('Dashboard service error:', serviceError);
 
+      const errorMessage = serviceError instanceof Error ? serviceError.message : String(serviceError);
+
       // Handle specific GitHub API errors
-      if (serviceError.message?.includes('rate limit')) {
+      if (errorMessage.includes('rate limit')) {
         return NextResponse.json(
           {
             error: 'GitHub API rate limit exceeded',
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (serviceError.message?.includes('Unauthorized') || serviceError.message?.includes('401')) {
+      if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
         return NextResponse.json(
           {
             error: 'GitHub authentication failed',
