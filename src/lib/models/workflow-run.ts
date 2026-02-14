@@ -62,3 +62,6 @@ WorkflowRunSchema.index({ runNumber: 1 })
 WorkflowRunSchema.index({ duration: -1 })
 
 export const WorkflowRun = mongoose.models.WorkflowRun || mongoose.model<IWorkflowRun>('WorkflowRun', WorkflowRunSchema)
+
+// Export as WorkflowRunModel for backward compatibility
+export const WorkflowRunModel = WorkflowRun

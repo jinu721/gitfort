@@ -1,5 +1,6 @@
 import { EmailService } from './email-service';
 import { NotificationPreferenceService } from './notification-preference-service';
+import { User } from './models/user';
 
 export interface NotificationEvent {
   type: 'streak_risk' | 'security_alert' | 'cicd_failure' | 'weekly_digest';
@@ -41,21 +42,28 @@ export class NotificationService {
       // Generate notification content
       const content = this.generateNotificationContent(event);
       
+      // Get user email
+      const user = await User.findById(event.userId);
+      if (!user || !user.email) {
+        console.log(`No email found for user ${event.userId}`);
+        return false;
+      }
+
       // Send email
-      const success = await this.emailService.sendEmail({
-        to: preferences.emailAddress,
+      const result = await this.emailService.sendEmail({
+        to: user.email,
         subject: content.subject,
         html: content.htmlContent,
         text: content.textContent
       });
 
-      if (success) {
-        console.log(`Notification sent successfully to ${preferences.emailAddress}`);
+      if (result.success) {
+        console.log(`Notification sent successfully to ${user.email}`);
       } else {
-        console.error(`Failed to send notification to ${preferences.emailAddress}`);
+        console.error(`Failed to send notification to ${user.email}`);
       }
 
-      return success;
+      return result.success;
     } catch (error) {
       console.error('Error sending notification:', error);
       return false;
@@ -263,3 +271,6 @@ export class NotificationService {
     };
   }
 }
+
+// Export a singleton instance
+export const notificationService = new NotificationService();

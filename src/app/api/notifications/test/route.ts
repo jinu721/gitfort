@@ -23,7 +23,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await notificationService.sendTestNotification(session.user.email, username)
+
+    const testEvent = {
+      type: 'weekly_digest' as const,
+      userId: session.user.id || '',
+      data: {
+        stats: {
+          commits: 42,
+          activeRepos: 5,
+          currentStreak: 7,
+          securityScans: 3,
+          cicdRuns: 15
+        }
+      },
+      timestamp: new Date()
+    }
+
+    await notificationService.sendNotification(testEvent)
 
     return NextResponse.json({
       success: true,
@@ -53,7 +69,9 @@ export async function GET() {
       )
     }
 
-    const isConfigured = await notificationService.verifyEmailConfiguration()
+    // Check if email service is configured by trying to verify connection
+    const emailService = (notificationService as any).emailService
+    const isConfigured = emailService ? await emailService.verifyConnection() : false
 
     return NextResponse.json({
       configured: isConfigured,

@@ -45,7 +45,7 @@ export function RepositoryBarChart({
               width={90}
             />
             <Tooltip 
-              formatter={(value: number) => [value, 'Count']}
+              formatter={(value: number | undefined) => [value || 0, 'Count']}
               labelFormatter={(label) => {
                 const originalItem = data.find(item => truncateName(item.name) === label)
                 return originalItem ? originalItem.name : label
@@ -73,7 +73,7 @@ export function RepositoryBarChart({
           />
           <YAxis tick={{ fontSize: 12 }} />
           <Tooltip 
-            formatter={(value: number) => [value, 'Count']}
+            formatter={(value: number | undefined) => [value || 0, 'Count']}
             labelFormatter={(label) => {
               const originalItem = data.find(item => truncateName(item.name) === label)
               return originalItem ? originalItem.name : label

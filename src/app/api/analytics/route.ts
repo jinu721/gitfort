@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
     const analyticsService = new AnalyticsService(githubClient)
 
     const analytics = await analyticsService.generateAnalytics(
-      session.user.username,
-      session.user.id
+      session.user.username || '',
+      session.user.id || ''
     )
 
     return NextResponse.json(analytics)
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const githubClient = new GitHubAPIClient()
     const analyticsProcessor = new AnalyticsProcessor(githubClient)
 
-    const repositories = await githubClient.getUserRepositories(username)
+    const repositories = await githubClient.getRepositories(username)
     const repositoryStats = repositories.map(repo => ({
       name: repo.name,
       fullName: repo.full_name,

@@ -30,36 +30,35 @@ export interface ActivityData {
   averageActivityScore: number
   mostActiveRepository: string
   leastActiveRepository: string
+}
 
-    export interface HeatmapData {
-      contributions: Array<{
-        date: string
-        count: number
-        level: number
-        dayOfWeek: number
-        weekOfYear: number
-      }>
-      totalContributions: number
-      maxContributions: number
-      averageContributions: number
-      streakData: {
-        currentStreak: number
-        longestStreak: number
-        streakStart: string | null
-        streakEnd: string | null
-      }
-      dateRange: {
-        startDate: string
-        endDate: string
-        totalDays: number
-      }
-    }
+export interface HeatmapData {
+  contributions: Array<{
+    date: string
+    count: number
+    level: number
+    dayOfWeek: number
+    weekOfYear: number
+  }>
+  totalContributions: number
+  maxContributions: number
+  averageContributions: number
+  streakData: {
+    currentStreak: number
+    longestStreak: number
+    streakStart: string | null
+    streakEnd: string | null
+  }
+  dateRange: {
+    startDate: string
+    endDate: string
+    totalDays: number
+  }
+}
 
-    export interface DateRange {
-      startDate: Date
-      endDate: Date
-    }
-
+export interface DateRange {
+  startDate: Date
+  endDate: Date
 }
 
 export interface RepositoryStats {

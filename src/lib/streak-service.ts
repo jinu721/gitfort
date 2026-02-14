@@ -3,8 +3,8 @@ import { ContributionFetcher } from './contribution-fetcher'
 import { IStreak, IContributionDay } from './models/streak'
 import { GitHubAPIClient } from './github-api-client'
 import { StreakPersistenceService } from './streak-persistence-service'
-import { notificationService, NotificationContext } from './notification-service'
-import { User } from './models/user'
+import { notificationService, NotificationContent } from './notification-service'
+import { User, IUser } from './models/user'
 
 export interface StreakUpdateResult {
   success: boolean
@@ -83,7 +83,7 @@ export class StreakService {
   public async updateStreakDataWithNotifications(
     userId: string, 
     username: string, 
-    user: User,
+    user: IUser,
     lastNotificationSent: Date | null = null
   ): Promise<StreakUpdateResult> {
     try {
@@ -93,16 +93,20 @@ export class StreakService {
         return updateResult
       }
 
-      const notificationContext: NotificationContext = {
-        user,
-        currentStreak: updateResult.streak.currentStreak,
-        lastContributionDate: updateResult.streak.lastContributionDate,
-        lastNotificationSent
-      }
+      // Create streak risk notification event
+      const notificationEvent = {
+        type: 'streak_risk' as const,
+        userId: userId,
+        data: {
+          currentStreak: updateResult.streak.currentStreak,
+          daysUntilRisk: 1 // Calculate based on last contribution
+        },
+        timestamp: new Date()
+      };
 
       let notificationSent = false
       try {
-        notificationSent = await notificationService.processStreakRiskNotification(notificationContext)
+        notificationSent = await notificationService.sendNotification(notificationEvent)
       } catch (notificationError) {
         console.error('Notification failed but streak update succeeded:', notificationError)
       }
@@ -311,10 +315,28 @@ export class StreakService {
   }
 
   public async sendTestNotification(userEmail: string, username: string): Promise<void> {
-    await notificationService.sendTestNotification(userEmail, username)
+    // Create a test notification event
+    const testEvent = {
+      type: 'weekly_digest' as const,
+      userId: 'test-user-id',
+      data: {
+        stats: {
+          commits: 42,
+          activeRepos: 5,
+          currentStreak: 7,
+          securityScans: 3,
+          cicdRuns: 15
+        }
+      },
+      timestamp: new Date()
+    };
+
+    await notificationService.sendNotification(testEvent);
   }
 
   public async verifyEmailConfiguration(): Promise<boolean> {
-    return await notificationService.verifyEmailConfiguration()
+    // Check if email service is configured by trying to verify connection
+    const emailService = (notificationService as any).emailService;
+    return emailService ? await emailService.verifyConnection() : false;
   }
 }

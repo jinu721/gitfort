@@ -38,14 +38,14 @@ export interface EmailFailureLog {
   resolved: boolean
 }
 
-class EmailService {
+export class EmailService {
   private transporter: nodemailer.Transporter
   private maxRetries = 3
   private retryDelay = 1000 // 1 second
   private failureLog: EmailFailureLog[] = []
 
   constructor() {
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_PORT === 465,
@@ -113,7 +113,7 @@ class EmailService {
       })
       
       // Log the failure
-      this.logFailure(options.to, options.subject, failureType, errorMessage, retryCount)
+      this.logFailure(options.to, options.subject, failureType || 'unknown', errorMessage || 'Unknown error', retryCount)
       
       // Determine if we should retry based on error type
       const shouldRetry = this.shouldRetryError(failureType, retryCount)
@@ -127,7 +127,7 @@ class EmailService {
 
       // Try fallback methods if available
       if (retryCount >= this.maxRetries) {
-        await this.tryFallbackMethods(options, failureType, errorMessage)
+        await this.tryFallbackMethods(options, failureType || 'unknown', errorMessage || 'Unknown error')
       }
 
       return {

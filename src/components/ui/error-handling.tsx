@@ -196,7 +196,7 @@ export function NotFoundError({ resource = 'resource', onGoBack }: NotFoundError
         {resource.charAt(0).toUpperCase() + resource.slice(1)} Not Found
       </h2>
       <p className="text-gray-600 mb-6">
-        The {resource} you're looking for doesn't exist or has been moved.
+        The {resource} you&apos;re looking for doesn&apos;t exist or has been moved.
       </p>
       {onGoBack && (
         <button
@@ -222,7 +222,7 @@ export function UnauthorizedError({ onLogin }: UnauthorizedErrorProps) {
         Access Denied
       </h2>
       <p className="text-gray-600 mb-6">
-        You don't have permission to access this resource. Please log in or contact an administrator.
+        You don&apos;t have permission to access this resource. Please log in or contact an administrator.
       </p>
       {onLogin && (
         <button

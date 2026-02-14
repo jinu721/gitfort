@@ -184,8 +184,8 @@ export class StreakPersistenceService {
       const cutoffString = cutoffDate.toISOString().split('T')[0]
 
       const filteredData = streak.contributionData
-        .filter(contribution => contribution.date >= cutoffString)
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .filter((contribution: any) => contribution.date >= cutoffString)
+        .sort((a: any, b: any) => a.date.localeCompare(b.date))
 
       return {
         success: true,
@@ -229,7 +229,7 @@ export class StreakPersistenceService {
       }
 
       const totalContributions = streak.contributionData.reduce(
-        (sum, day) => sum + day.contributionCount,
+        (sum: number, day: any) => sum + day.contributionCount,
         0
       )
 

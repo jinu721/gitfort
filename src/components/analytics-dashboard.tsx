@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { CommitLineChart, LanguagePieChart, RepositoryBarChart, ContributionHeatmap } from './charts'
 import { DashboardSkeleton, EmptyState, ButtonLoading, ErrorAlert } from './ui'
 import type { 
@@ -30,11 +30,7 @@ export function AnalyticsDashboard({ username }: AnalyticsDashboardProps) {
   const [dateFilter, setDateFilter] = useState<DateRangeFilter>({ range: 'year' })
   const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'languages' | 'activity' | 'heatmap'>('overview')
 
-  useEffect(() => {
-    fetchAnalyticsData()
-  }, [username, dateFilter])
-
-  const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -64,7 +60,11 @@ export function AnalyticsDashboard({ username }: AnalyticsDashboardProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [username, dateFilter.range, dateFilter.startDate, dateFilter.endDate])
+
+  useEffect(() => {
+    fetchAnalyticsData()
+  }, [fetchAnalyticsData])
 
   const handleDateRangeChange = (range: DateRangeFilter['range']) => {
     setDateFilter({ range })
@@ -219,14 +219,14 @@ export function AnalyticsDashboard({ username }: AnalyticsDashboardProps) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white p-6 rounded-lg border">
               <CommitLineChart 
-                data={commitData.weekly} 
+                data={commitData.weekly.map(item => ({ date: item.week, count: item.count }))} 
                 title="Weekly Commit Frequency"
                 color="#f59e0b"
               />
             </div>
             <div className="bg-white p-6 rounded-lg border">
               <CommitLineChart 
-                data={commitData.monthly} 
+                data={commitData.monthly.map(item => ({ date: item.month, count: item.count }))} 
                 title="Monthly Commit Frequency"
                 color="#ef4444"
               />

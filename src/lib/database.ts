@@ -35,7 +35,7 @@ class MongoDBConnection implements DatabaseConnection {
 
   private async establishConnection(): Promise<void> {
     try {
-      await mongoose.connect(MONGODB_URI, {
+      await mongoose.connect(MONGODB_URI || 'mongodb://localhost:27017/gitfort', {
         maxPoolSize: 10,
         serverSelectionTimeoutMS: 5000,
         socketTimeoutMS: 45000,

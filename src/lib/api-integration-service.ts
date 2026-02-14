@@ -2,6 +2,7 @@ import { GitHubAPIClient } from './github-api-client';
 import { StreakCalculator } from './streak-calculator';
 import { SecurityScanner } from './security-scanner';
 import { WorkflowTrackingService } from './workflow-tracking-service';
+import { WorkflowDataFetcher } from './workflow-fetcher';
 import { AnalyticsProcessor } from './analytics-processor';
 import { NotificationService } from './notification-service';
 import { getUserWithDecryptedToken } from './session-manager';
@@ -27,9 +28,10 @@ export class APIIntegrationService {
   constructor() {
     this.githubClient = new GitHubAPIClient();
     this.streakCalculator = new StreakCalculator();
-    this.securityScanner = new SecurityScanner();
-    this.workflowService = new WorkflowTrackingService();
-    this.analyticsProcessor = new AnalyticsProcessor();
+    this.securityScanner = new SecurityScanner(this.githubClient);
+    const workflowFetcher = new WorkflowDataFetcher(this.githubClient);
+    this.workflowService = new WorkflowTrackingService(workflowFetcher);
+    this.analyticsProcessor = new AnalyticsProcessor(this.githubClient);
     this.notificationService = new NotificationService();
   }
 
@@ -58,7 +60,7 @@ export class APIIntegrationService {
       ]);
 
       // Calculate streak data
-      const streakData = this.streakCalculator.calculateStreaks(contributions);
+      const streakData = this.streakCalculator.getStreakStatistics(contributions);
 
       // Get security findings for repositories (limit to top 10 for performance)
       const topRepos = repositories.slice(0, 10);
@@ -80,7 +82,7 @@ export class APIIntegrationService {
       const workflowPromises = topRepos.map(async (repo) => {
         try {
           const runs = await this.githubClient.getWorkflowRuns(repo.owner.login, repo.name);
-          return this.workflowService.processWorkflowRuns(runs, repo.full_name);
+          return await this.workflowService.calculateWorkflowMetrics(repo.owner.login, repo.name);
         } catch (error) {
           console.error(`Workflow fetch failed for ${repo.full_name}:`, error);
           return null;
@@ -93,12 +95,33 @@ export class APIIntegrationService {
         .map(result => (result as PromiseFulfilledResult<any>).value);
 
       // Process analytics data
-      const analytics = await this.analyticsProcessor.processUserAnalytics({
-        profile: profile.user,
-        repositories,
-        contributions,
-        workflowMetrics: workflowMetrics.filter(m => m !== null)
-      });
+      const repositoryStats = repositories.map(repo => ({
+        name: repo.name,
+        fullName: repo.full_name,
+        language: repo.language || 'Unknown',
+        starCount: repo.stargazers_count,
+        forkCount: repo.forks_count,
+        commits: 0, // This would need to be fetched separately
+        lastCommitDate: new Date(repo.updated_at),
+        activityScore: 0
+      }));
+
+      const [commitFrequency, languageUsage, repositoryActivity, heatmap] = await Promise.all([
+        this.analyticsProcessor.processCommitFrequency(profile.user.login, repositoryStats),
+        this.analyticsProcessor.processLanguageUsage(repositories.map(repo => ({
+          owner: repo.owner.login,
+          name: repo.name
+        }))),
+        this.analyticsProcessor.processRepositoryActivity(profile.user.login, repositoryStats),
+        this.analyticsProcessor.generateContributionHeatmap(profile.user.login)
+      ]);
+
+      const analytics = {
+        commitFrequency,
+        languageUsage,
+        repositoryActivity,
+        heatmap
+      };
 
       return {
         profile: profile.user,
@@ -144,7 +167,7 @@ export class APIIntegrationService {
         result.contributions = await this.githubClient.getContributionsForStreak(username, 365);
         
         if (result.contributions) {
-          result.streakData = this.streakCalculator.calculateStreaks(result.contributions);
+          result.streakData = this.streakCalculator.getStreakStatistics(result.contributions);
         }
       }
 
@@ -174,7 +197,7 @@ export class APIIntegrationService {
         const workflowPromises = topRepos.map(async (repo) => {
           try {
             const runs = await this.githubClient.getWorkflowRuns(repo.owner.login, repo.name);
-            return this.workflowService.processWorkflowRuns(runs, repo.full_name);
+            return await this.workflowService.calculateWorkflowMetrics(repo.owner.login, repo.name);
           } catch (error) {
             console.error(`Workflow fetch failed for ${repo.full_name}:`, error);
             return null;
@@ -193,12 +216,33 @@ export class APIIntegrationService {
         const contributions = result.contributions || await this.githubClient.getContributionsForStreak(username, 365);
         const workflowMetrics = result.workflowMetrics || [];
 
-        result.analytics = await this.analyticsProcessor.processUserAnalytics({
-          profile,
-          repositories,
-          contributions,
-          workflowMetrics
-        });
+        const repositoryStats = repositories.map(repo => ({
+          name: repo.name,
+          fullName: repo.full_name,
+          language: repo.language || 'Unknown',
+          starCount: repo.stargazers_count,
+          forkCount: repo.forks_count,
+          commits: 0,
+          lastCommitDate: new Date(repo.updated_at),
+          activityScore: 0
+        }));
+
+        const [commitFrequency, languageUsage, repositoryActivity, heatmap] = await Promise.all([
+          this.analyticsProcessor.processCommitFrequency(profile.login, repositoryStats),
+          this.analyticsProcessor.processLanguageUsage(repositories.map(repo => ({
+            owner: repo.owner.login,
+            name: repo.name
+          }))),
+          this.analyticsProcessor.processRepositoryActivity(profile.login, repositoryStats),
+          this.analyticsProcessor.generateContributionHeatmap(profile.login)
+        ]);
+
+        result.analytics = {
+          commitFrequency,
+          languageUsage,
+          repositoryActivity,
+          heatmap
+        };
       }
 
       return result;
@@ -233,7 +277,7 @@ export class APIIntegrationService {
 
       const { user } = userWithToken;
       const contributions = await this.githubClient.getContributionsForStreak(user.username, 30);
-      const streakData = this.streakCalculator.calculateStreaks(contributions);
+      const streakData = this.streakCalculator.getStreakStatistics(contributions);
 
       // Check if streak is at risk (no contribution in last 20+ hours)
       const lastContribution = contributions

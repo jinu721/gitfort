@@ -2,12 +2,13 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { StreakDashboard } from "@/components/streak-dashboard";
 import { SecurityDashboard } from "@/components/security-dashboard";
 import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 import { CICDDashboard } from "@/components/cicd-dashboard";
+import Image from "next/image";
 
 type DashboardSection = 'overview' | 'streak' | 'security' | 'analytics' | 'cicd';
 
@@ -17,6 +18,39 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
   const [repositories, setRepositories] = useState<Array<{ owner: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+
+  const fetchDashboardData = useCallback(async () => {
+    if (!session?.user?.username) return;
+
+    try {
+      setLoading(true);
+      
+      // Use the new service layer instead of direct API calls
+      const response = await fetch('/api/dashboard/stats', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: session.user.username
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardStats(data.stats);
+        setRepositories(data.repositories || []);
+      } else {
+        console.error('Dashboard API error:', response.status);
+      }
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.user?.username]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -26,32 +60,37 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (session?.user?.username) {
-      fetchRepositories();
+      fetchDashboardData();
     }
-  }, [session]);
+  }, [session, fetchDashboardData]);
 
-  const fetchRepositories = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/repositories');
-      
-      if (response.ok) {
-        const data = await response.json();
-        setRepositories(data.repositories || []);
-      } else {
-        console.error('Repository API error:', response.status);
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showProfileMenu) {
+        setShowProfileMenu(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch repositories:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showProfileMenu]);
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-[#0d1117]">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-16 h-16 relative">
+            <Image
+              src="/gitfort-logo.png"
+              alt="GitFort Logo"
+              width={64}
+              height={64}
+              className="rounded-xl animate-pulse"
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -113,65 +152,159 @@ export default function Dashboard() {
     switch (activeSection) {
       case 'overview':
         return (
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { title: 'Current Streak', value: loading ? 'Loading...' : '12 days', color: 'emerald', change: '+2 from last week' },
-                { title: 'Security Issues', value: loading ? 'Loading...' : '3 found', color: 'red', change: '-1 from last scan' },
-                { title: 'Total Commits', value: loading ? 'Loading...' : '1,247', color: 'blue', change: '+45 this week' },
-                { title: 'Build Success', value: loading ? 'Loading...' : '94.2%', color: 'green', change: '+2.1% improvement' }
+                { 
+                  title: 'Current Streak', 
+                  value: loading ? '...' : '12', 
+                  unit: 'days',
+                  icon: (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  ),
+                  change: '+2 from last week',
+                  trend: 'up'
+                },
+                { 
+                  title: 'Security Issues', 
+                  value: loading ? '...' : '3', 
+                  unit: 'found',
+                  icon: (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  ),
+                  change: '-1 from last scan',
+                  trend: 'down'
+                },
+                { 
+                  title: 'Total Commits', 
+                  value: loading ? '...' : '1,247', 
+                  unit: '',
+                  icon: (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  ),
+                  change: '+45 this week',
+                  trend: 'up'
+                },
+                { 
+                  title: 'Build Success', 
+                  value: loading ? '...' : '94.2', 
+                  unit: '%',
+                  icon: (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ),
+                  change: '+2.1% improvement',
+                  trend: 'up'
+                }
               ].map((stat, index) => (
-                <div key={index} className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-gray-700 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-400">{stat.title}</p>
-                      <p className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-fjalla-one)' }}>{stat.value}</p>
-                      <p className="text-xs text-gray-500 mt-1">{stat.change}</p>
+                <div key={index} className="bg-[#161b22] border border-[#21262d] rounded-lg p-5 hover:border-[#30363d] transition-all duration-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 bg-[#238636]/10 rounded-lg flex items-center justify-center text-[#2ea043]">
+                      {stat.icon}
                     </div>
-                    <div className={`w-12 h-12 bg-${stat.color}-500/10 rounded-lg flex items-center justify-center`}>
-                      <div className={`w-6 h-6 bg-${stat.color}-500 rounded`}></div>
+                    <div className={`text-xs px-2 py-1 rounded-full ${
+                      stat.trend === 'up' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {stat.trend === 'up' ? '↗' : '↘'}
                     </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#7d8590] mb-2">{stat.title}</p>
+                    <div className="flex items-baseline space-x-1 mb-2">
+                      <span className="text-2xl font-bold text-white" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                        {stat.value}
+                      </span>
+                      {stat.unit && <span className="text-sm text-[#7d8590]">{stat.unit}</span>}
+                    </div>
+                    <p className="text-xs text-[#7d8590]">{stat.change}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-8">
-              <h3 className="text-xl font-bold text-white mb-6" style={{ fontFamily: 'var(--font-fjalla-one)' }}>Quick Actions</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                Quick Actions
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {navigationItems.slice(1).map((item) => (
                   <button
                     key={item.id}
                     onClick={() => setActiveSection(item.id as DashboardSection)}
-                    className="flex items-center p-4 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 hover:border-emerald-500/50 transition-all group"
+                    className="flex items-center p-4 bg-[#0d1117] border border-[#21262d] rounded-lg hover:bg-[#21262d] hover:border-[#238636] transition-all duration-200 group"
                   >
-                    <div className="text-emerald-400 mr-3 group-hover:text-emerald-300">
+                    <div className="w-10 h-10 bg-[#238636]/10 rounded-lg flex items-center justify-center text-[#2ea043] group-hover:bg-[#238636]/20 transition-colors mr-4">
                       {item.icon}
                     </div>
-                    <div className="text-left">
+                    <div className="flex-1 text-left">
                       <p className="text-sm font-medium text-white">{item.label}</p>
-                      <p className="text-xs text-gray-400">View details</p>
+                      <p className="text-xs text-[#7d8590]">View details</p>
+                    </div>
+                    <div className="text-[#7d8590] group-hover:text-[#2ea043] transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-8">
-              <h3 className="text-xl font-bold text-white mb-4" style={{ fontFamily: 'var(--font-fjalla-one)' }}>Repository Overview</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-6" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                Repository Overview
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-emerald-400" style={{ fontFamily: 'var(--font-fjalla-one)' }}>{repositories.length}</p>
-                  <p className="text-sm text-gray-400">Total Repositories</p>
+                  <p className="text-3xl font-bold text-[#2ea043] mb-2" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                    {repositories.length}
+                  </p>
+                  <p className="text-sm text-[#7d8590]">Total Repositories</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-emerald-400" style={{ fontFamily: 'var(--font-fjalla-one)' }}>{repositories.length}</p>
-                  <p className="text-sm text-gray-400">Active Monitoring</p>
+                  <p className="text-3xl font-bold text-[#2ea043] mb-2" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                    {repositories.length}
+                  </p>
+                  <p className="text-sm text-[#7d8590]">Active Monitoring</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-3xl font-bold text-emerald-400" style={{ fontFamily: 'var(--font-fjalla-one)' }}>100%</p>
-                  <p className="text-sm text-gray-400">Coverage</p>
+                  <p className="text-3xl font-bold text-[#2ea043] mb-2" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                    100%
+                  </p>
+                  <p className="text-sm text-[#7d8590]">Coverage</p>
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+                Recent Activity
+              </h3>
+              <div className="space-y-3">
+                {[
+                  { action: 'Security scan completed', time: '2 minutes ago', status: 'success' },
+                  { action: 'New commit detected', time: '15 minutes ago', status: 'info' },
+                  { action: 'Build pipeline started', time: '1 hour ago', status: 'pending' },
+                  { action: 'Streak milestone reached', time: '3 hours ago', status: 'success' }
+                ].map((activity, index) => (
+                  <div key={index} className="flex items-center p-3 bg-[#0d1117] rounded-lg border border-[#21262d]">
+                    <div className={`w-2 h-2 rounded-full mr-3 ${
+                      activity.status === 'success' ? 'bg-green-500' :
+                      activity.status === 'info' ? 'bg-blue-500' : 'bg-yellow-500'
+                    }`}></div>
+                    <div className="flex-1">
+                      <p className="text-sm text-white">{activity.action}</p>
+                      <p className="text-xs text-[#7d8590]">{activity.time}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -185,7 +318,7 @@ export default function Dashboard() {
           <AnalyticsDashboard username={session.user.username} />
         ) : (
           <div className="text-center py-8">
-            <p className="text-gray-400">Username not available</p>
+            <p className="text-[#7d8590]">Username not available</p>
           </div>
         );
       case 'cicd':
@@ -196,49 +329,75 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Navigation */}
-      <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="w-7 h-7 bg-emerald-500 rounded-md flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-                </svg>
+    <div className="min-h-screen bg-[#0d1117] text-white">
+      <div className="border-b border-[#21262d] bg-[#0d1117]">
+        <div className="flex justify-between items-center px-4 sm:px-6 py-4">
+          <div className="flex-1 min-w-0 pr-4">
+            <h1 className="text-lg sm:text-xl font-bold text-white truncate" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
+              {navigationItems.find(item => item.id === activeSection)?.label || 'Dashboard'}
+            </h1>
+            <p className="text-xs text-[#7d8590] mt-1 truncate hidden sm:block">
+              {activeSection === 'overview' && 'Monitor your GitHub activity at a glance'}
+              {activeSection === 'streak' && 'Track contribution streaks and maintain consistency'}
+              {activeSection === 'security' && 'Scan repositories for security vulnerabilities'}
+              {activeSection === 'analytics' && 'Analyze coding patterns and repository statistics'}
+              {activeSection === 'cicd' && 'Monitor CI/CD pipeline performance and build status'}
+            </p>
+          </div>
+          
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="flex items-center hover:bg-[#161b22] p-1 rounded-lg transition-colors"
+            >
+              <Image
+                className="h-7 w-7 rounded-lg border border-[#21262d] hover:border-[#30363d] transition-colors"
+                src={session.user?.image || ""}
+                alt={session.user?.name || "User"}
+                width={28}
+                height={28}
+              />
+            </button>
+            
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-[#161b22] border border-[#21262d] rounded-lg shadow-xl z-50">
+                <div className="p-3 border-b border-[#21262d]">
+                  <div className="flex items-center space-x-3">
+                    <Image
+                      className="h-10 w-10 rounded-lg"
+                      src={session.user?.image || ""}
+                      alt={session.user?.name || "User"}
+                      width={40}
+                      height={40}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{session.user?.name}</p>
+                      <p className="text-xs text-[#7d8590] truncate">@{session.user?.username || 'user'}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-2">
+                  <LogoutButton />
+                </div>
               </div>
-              <span className="text-xl font-bold text-white" style={{ fontFamily: 'var(--font-fjalla-one)' }}>GitFort</span>
-            </div>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-3">
-                <img
-                  className="h-8 w-8 rounded-full border-2 border-emerald-500"
-                  src={session.user?.image || ""}
-                  alt={session.user?.name || "User"}
-                />
-                <span className="text-sm font-medium text-gray-300">
-                  {session.user?.name}
-                </span>
-              </div>
-              <LogoutButton />
-            </div>
+            )}
           </div>
         </div>
-      </nav>
+      </div>
 
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-gray-900 border-r border-gray-800 min-h-screen">
-          <nav className="p-6">
-            <div className="space-y-2">
+        <aside className="w-72 bg-[#0d1117] border-r border-[#21262d] min-h-screen hidden lg:block">
+          <div className="p-6">
+            
+            <nav className="space-y-3">
               {navigationItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id as DashboardSection)}
-                  className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                  className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
                     activeSection === item.id
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      ? 'bg-[#238636] hover:bg-[#2ea043] text-white'
+                      : 'text-[#7d8590] hover:text-white hover:bg-[#161b22]'
                   }`}
                 >
                   <div className="mr-3">
@@ -247,25 +406,32 @@ export default function Dashboard() {
                   {item.label}
                 </button>
               ))}
-            </div>
-          </nav>
+            </nav>
+          </div>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2" style={{ fontFamily: 'var(--font-fjalla-one)' }}>
-              {navigationItems.find(item => item.id === activeSection)?.label || 'Dashboard'}
-            </h1>
-            <p className="text-gray-400">
-              {activeSection === 'overview' && 'Monitor your GitHub activity at a glance'}
-              {activeSection === 'streak' && 'Track your contribution streaks and maintain consistency'}
-              {activeSection === 'security' && 'Scan repositories for security vulnerabilities'}
-              {activeSection === 'analytics' && 'Analyze your coding patterns and repository statistics'}
-              {activeSection === 'cicd' && 'Monitor CI/CD pipeline performance and build status'}
-            </p>
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#161b22] border-t border-[#21262d] z-50">
+          <div className="grid grid-cols-5 gap-1 p-2">
+            {navigationItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveSection(item.id as DashboardSection)}
+                className={`flex flex-col items-center p-3 rounded-lg transition-all ${
+                  activeSection === item.id
+                    ? 'text-[#238636] bg-[#238636]/10'
+                    : 'text-[#7d8590] hover:text-white'
+                }`}
+              >
+                <div className="mb-1">
+                  {item.icon}
+                </div>
+                <span className="text-xs font-medium">{item.label.split(' ')[0]}</span>
+              </button>
+            ))}
           </div>
-          
+        </div>
+
+        <main className="flex-1 p-6 pb-24 lg:pb-6 max-w-7xl">
           {renderActiveSection()}
         </main>
       </div>

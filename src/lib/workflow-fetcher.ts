@@ -146,7 +146,7 @@ export class WorkflowDataFetcher {
     const url = `/repos/${owner}/${repo}/actions/runs?${params.toString()}`
     
     try {
-      const response = await this.githubClient.makeRequest(url)
+      const response = await this.githubClient.get(url)
       return response
     } catch (error) {
       console.error(`Failed to fetch workflow runs for ${owner}/${repo}:`, error)
@@ -162,7 +162,7 @@ export class WorkflowDataFetcher {
     const url = `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`
     
     try {
-      const response = await this.githubClient.makeRequest(url)
+      const response = await this.githubClient.get(url)
       return response
     } catch (error) {
       console.error(`Failed to fetch jobs for workflow run ${runId}:`, error)

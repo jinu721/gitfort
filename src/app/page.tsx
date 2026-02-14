@@ -228,7 +228,7 @@ export default function Home() {
               <span className="text-lg font-bold text-white" style={{ fontFamily: 'var(--font-fjalla-one)' }}>GitFort</span>
             </div>
             <p className="text-[#7d8590] text-sm">
-              © 2024 GitFort. Built for developers.
+              © 2026 GitFort. Built for developers.
             </p>
           </div>
         </div>

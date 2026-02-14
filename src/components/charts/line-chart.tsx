@@ -24,7 +24,7 @@ export function CommitLineChart({ data, title, color = '#8884d8', height = 300 }
           <YAxis tick={{ fontSize: 12 }} />
           <Tooltip 
             labelFormatter={(value) => new Date(value).toLocaleDateString()}
-            formatter={(value: number) => [value, 'Commits']}
+            formatter={(value: number | undefined) => [value || 0, 'Commits']}
           />
           <Line 
             type="monotone" 

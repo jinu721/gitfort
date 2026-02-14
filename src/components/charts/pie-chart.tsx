@@ -53,9 +53,9 @@ export function LanguagePieChart({ data, title, height = 300, showLegend = true 
             ))}
           </Pie>
           <Tooltip 
-            formatter={(value: number, name: string) => [
-              `${((value / data.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%`,
-              name
+            formatter={(value: number | undefined, name: string | undefined) => [
+              `${(((value || 0) / data.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1)}%`,
+              name || 'Unknown'
             ]}
           />
           {showLegend && (

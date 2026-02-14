@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { CommitLineChart, RepositoryBarChart } from './charts'
 import { DashboardSkeleton, EmptyState, ButtonLoading, InlineLoading } from './ui'
 
@@ -50,26 +50,7 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
   const [selectedRepo, setSelectedRepo] = useState<string>('')
   const [refreshInterval, setRefreshInterval] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (repositories.length > 0 && !selectedRepo) {
-      setSelectedRepo(`${repositories[0].owner}/${repositories[0].name}`)
-    }
-  }, [repositories, selectedRepo])
-
-  useEffect(() => {
-    if (selectedRepo) {
-      fetchCICDData()
-    }
-  }, [selectedRepo])
-
-  useEffect(() => {
-    if (refreshInterval) {
-      const interval = setInterval(fetchCICDData, refreshInterval * 1000)
-      return () => clearInterval(interval)
-    }
-  }, [refreshInterval, selectedRepo])
-
-  const fetchCICDData = async () => {
+  const fetchCICDData = useCallback(async () => {
     if (!selectedRepo) return
 
     try {
@@ -102,7 +83,26 @@ export function CICDDashboard({ repositories }: CICDDashboardProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedRepo])
+
+  useEffect(() => {
+    if (repositories.length > 0 && !selectedRepo) {
+      setSelectedRepo(`${repositories[0].owner}/${repositories[0].name}`)
+    }
+  }, [repositories, selectedRepo])
+
+  useEffect(() => {
+    if (selectedRepo) {
+      fetchCICDData()
+    }
+  }, [selectedRepo, fetchCICDData])
+
+  useEffect(() => {
+    if (refreshInterval) {
+      const interval = setInterval(fetchCICDData, refreshInterval * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [refreshInterval, fetchCICDData])
 
   const getStatusColor = (status: string, conclusion: string | null) => {
     if (status === 'in_progress') return 'text-blue-600 bg-blue-100'
